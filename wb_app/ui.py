@@ -3070,7 +3070,7 @@ class AboutDialog(tk.Toplevel):
             [
                 ("Тип запуска", build_type),
                 ("Хранилище данных", str(parent.service.paths["root"])),
-                ("Репозиторий", "github.com/otdelvsego-spec/WBPriceAnalyzer"),
+                ("Репозиторий", "github.com/Vladimir0085/WBPriceAnalyzer"),
             ]
         ):
             ttk.Label(details, text=f"{label}:").grid(row=row, column=0, sticky="nw", padx=(0, 12), pady=3)
@@ -3094,7 +3094,7 @@ class AboutDialog(tk.Toplevel):
         ttk.Button(
             buttons,
             text="Открыть GitHub",
-            command=lambda: webbrowser.open("https://github.com/otdelvsego-spec/WBPriceAnalyzer"),
+            command=lambda: webbrowser.open("https://github.com/Vladimir0085/WBPriceAnalyzer"),
         ).grid(row=0, column=1, padx=4)
         ttk.Button(buttons, text="Закрыть", style="Accent.TButton", command=self.destroy).grid(
             row=0, column=2, padx=4
