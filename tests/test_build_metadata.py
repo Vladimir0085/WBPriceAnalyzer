@@ -72,5 +72,12 @@ class BuildMetadataTests(unittest.TestCase):
         self.assertIn("Второй экземпляр не завершился", smoke_test)
 
 
+    def test_about_dialog_references_project_repository(self) -> None:
+        ui_text = (PROJECT_ROOT / "wb_app/ui.py").read_text(encoding="utf-8")
+        repository_url = "https://github.com/Vladimir0085/WBPriceAnalyzer"
+        self.assertIn(repository_url, ui_text)
+        self.assertNotIn("github.com/otdelvsego-spec/WBPriceAnalyzer", ui_text)
+
+
 if __name__ == "__main__":
     unittest.main()
