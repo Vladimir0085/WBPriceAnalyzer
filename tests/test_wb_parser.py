@@ -25,6 +25,14 @@ HEADERS = [
     "Разовое изменение срока перечисления денежных средств", "Коэффициент логистики",
 ]
 
+NEW_HEADER_NAMES = {
+    "Виды логистики, штрафов и корректировок ВВ":
+        "Виды доставок, штрафов и корректировок ВВ",
+    "Возмещение издержек по перевозке/по складским операциям с товаром":
+        "Возмещение издержек по перемещению и операционной обработке товара",
+    "Коэффициент логистики": "Коэффициент доставки",
+}
+
 
 class WBParserTests(unittest.TestCase):
     def test_detects_week_variant_and_out_of_week_correction(self) -> None:
@@ -52,6 +60,41 @@ class WBParserTests(unittest.TestCase):
             headers, rows = preview_sheet(path, parsed.sheet_name)
             self.assertEqual(headers[1], "A")
             self.assertEqual(rows[1][2], "100")
+
+    def test_parses_renamed_columns_from_new_weekly_format(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_name:
+            path = Path(temp_name) / "Еженедельный детализированный отчет №789.xlsx"
+            workbook = Workbook()
+            ws = workbook.active
+            ws.append([NEW_HEADER_NAMES.get(header, header) for header in HEADERS])
+            row = [
+                "Горшок", 100, "A", "Товар A", "Продажа", "Продажа",
+                "03.09.2026", "03.09.2026", 1, 1000, 800, 0, 20, 100,
+                20, 680, 50, 0, 0, "К клиенту при продаже", "Россия", "s1",
+                12.34, 0, 0, 0, 0, 0, 0, 0, 1.7,
+            ]
+            ws.append(row)
+            workbook.save(path)
+            workbook.close()
+
+            parsed = parse_report(path)
+
+            self.assertEqual(parsed.report_number, "789")
+            self.assertEqual(parsed.report_variant, "основной")
+            self.assertEqual(parsed.unknown_columns, [])
+            self.assertEqual(parsed.row_count, 1)
+            self.assertEqual(
+                parsed.accrual_rows[0].operation_detail,
+                "К клиенту при продаже",
+            )
+            self.assertAlmostEqual(
+                parsed.accrual_rows[0].carrier_reimbursement,
+                12.34,
+            )
+            self.assertAlmostEqual(
+                parsed.accrual_rows[0].logistics_coefficient,
+                1.7,
+            )
 
     def test_parses_buyout_notice_rows_and_total(self) -> None:
         with tempfile.TemporaryDirectory() as temp_name:
