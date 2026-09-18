@@ -4,7 +4,12 @@ import unittest
 from datetime import date
 from pathlib import Path
 
-from wb_app.calculator import calculate_run, calculate_scenario
+from wb_app.calculator import (
+    CalculationError,
+    calculate_run,
+    calculate_scenario,
+    discover_unknown_products,
+)
 from wb_app.models import AccrualRow, BuyoutNoticeRow, ParsedSource, Product
 
 
@@ -53,6 +58,170 @@ def operation(
 
 
 class WBCalculatorTests(unittest.TestCase):
+    def test_matches_report_articles_without_case_sensitivity(self) -> None:
+        source = ParsedSource(
+            path=Path("weekly.xlsx"),
+            file_hash="case-insensitive",
+            report_type="WEEKLY_WB",
+            sheet_name="Sheet1",
+            header_row=1,
+            period_start=date(2026, 8, 3),
+            period_end=date(2026, 8, 9),
+            accrual_rows=[
+                operation(
+                    2,
+                    "Продажа",
+                    article="stock-abc",
+                    document="Продажа",
+                    quantity=1,
+                    retail=1000,
+                    realized=800,
+                    payout=700,
+                ),
+                operation(3, "Логистика", article="STOCK-AbC", logistics=100),
+            ],
+        )
+        catalog_product = Product(
+            "Stock-ABC",
+            "Товар из справочника",
+            material_cost=100,
+            active=False,
+        )
+
+        self.assertEqual(
+            discover_unknown_products([source], {catalog_product.article: catalog_product}),
+            [],
+        )
+        calculation = calculate_run(
+            [source],
+            {catalog_product.article: catalog_product},
+            tax_rate=0.06,
+        )
+
+        self.assertEqual(len(calculation.products), 1)
+        self.assertEqual(calculation.products[0].article, "Stock-ABC")
+        self.assertEqual(calculation.products[0].units, 1)
+        self.assertEqual(calculation.products[0].financial_result, 600)
+        self.assertEqual(calculation.skipped_articles, {})
+        self.assertEqual(calculation.sku_conflicts, set())
+
+    def test_groups_unknown_and_skipped_article_case_variants(self) -> None:
+        source = ParsedSource(
+            path=Path("weekly.xlsx"),
+            file_hash="unknown-case",
+            report_type="WEEKLY_WB",
+            sheet_name="Sheet1",
+            header_row=1,
+            period_start=date(2026, 8, 3),
+            period_end=date(2026, 8, 9),
+            accrual_rows=[
+                operation(2, "Логистика", article="New-One", logistics=40),
+                operation(3, "Логистика", article="new-one", logistics=60),
+            ],
+        )
+
+        unknown = discover_unknown_products([source], {})
+        self.assertEqual([item.article for item in unknown], ["New-One"])
+
+        calculation = calculate_run(
+            [source],
+            {},
+            tax_rate=0.06,
+            skipped_articles={"NEW-ONE"},
+        )
+        self.assertEqual(list(calculation.skipped_articles), ["New-One"])
+        self.assertIn("-100,00", calculation.skipped_articles["New-One"])
+
+    def test_links_buyout_detail_and_notice_articles_ignoring_case(self) -> None:
+        detail = ParsedSource(
+            path=Path("buyout.xlsx"),
+            file_hash="buyout-case",
+            report_type="WEEKLY_WB",
+            sheet_name="Sheet1",
+            header_row=1,
+            report_number="2",
+            report_variant="по выкупам",
+            period_start=date(2026, 8, 3),
+            period_end=date(2026, 8, 9),
+            accrual_rows=[
+                operation(
+                    2,
+                    "Продажа",
+                    article="BUY-OUT",
+                    document="Продажа",
+                    quantity=2,
+                    retail=2000,
+                    realized=1600,
+                    payout=1200,
+                    source_name="buyout.xlsx",
+                ),
+                operation(
+                    3,
+                    "Логистика",
+                    article="Buy-Out",
+                    logistics=200,
+                    source_name="buyout.xlsx",
+                ),
+            ],
+        )
+        notice = ParsedSource(
+            path=Path("notice.xlsx"),
+            file_hash="notice-case",
+            report_type="BUYOUT_NOTICE_WB",
+            sheet_name="Sheet1",
+            header_row=10,
+            report_number="2",
+            report_variant="уведомление о выкупе",
+            period_start=date(2026, 8, 3),
+            period_end=date(2026, 8, 9),
+            buyout_notice_rows=[
+                BuyoutNoticeRow(
+                    "notice.xlsx",
+                    "Sheet1",
+                    11,
+                    "2",
+                    date(2026, 8, 3),
+                    "buy-out",
+                    "Товар",
+                    2,
+                    1000,
+                ),
+            ],
+        )
+
+        calculation = calculate_run(
+            [detail, notice],
+            {"Buy-Out": Product("Buy-Out", "Товар", material_cost=100)},
+            tax_rate=0.06,
+        )
+
+        self.assertEqual(calculation.products[0].article, "Buy-Out")
+        self.assertEqual(calculation.products[0].buyout_units_total, 2)
+        self.assertEqual(calculation.products[0].financial_result, 1000)
+        self.assertEqual(calculation.buyout_control_warnings, [])
+
+    def test_rejects_ambiguous_catalog_articles_that_only_differ_by_case(self) -> None:
+        source = ParsedSource(
+            path=Path("weekly.xlsx"),
+            file_hash="ambiguous-case",
+            report_type="WEEKLY_WB",
+            sheet_name="Sheet1",
+            header_row=1,
+            period_start=date(2026, 8, 3),
+            period_end=date(2026, 8, 9),
+            accrual_rows=[operation(2, "Продажа", article="ABC")],
+        )
+
+        with self.assertRaisesRegex(CalculationError, "отличаются только регистром"):
+            calculate_run(
+                [source],
+                {
+                    "ABC": Product("ABC", "Первый"),
+                    "abc": Product("abc", "Второй"),
+                },
+                tax_rate=0.06,
+            )
+
     def test_financial_model_uses_payout_once_and_allocates_storage(self) -> None:
         source = ParsedSource(
             path=Path("weekly.xlsx"),
