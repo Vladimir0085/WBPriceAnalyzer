@@ -30,6 +30,9 @@ if errorlevel 1 exit /b 1
 copy /Y README_WINDOWS.txt "dist\WBPriceAnalyzer\Прочтите_перед_запуском.txt" >nul
 
 for /f %%i in ('python -c "from wb_app import __version__; print(__version__)"') do set APP_VERSION=%%i
+copy /Y "docs\WBPriceAnalyzer_Instruction_v%APP_VERSION%.pdf" ^
+  "dist\WBPriceAnalyzer\WBPriceAnalyzer_Instruction_v%APP_VERSION%.pdf" >nul
+if errorlevel 1 exit /b 1
 if not exist artifacts mkdir artifacts
 powershell -NoProfile -Command ^
   "Compress-Archive -Path 'dist\WBPriceAnalyzer\*' -DestinationPath 'artifacts\WBPriceAnalyzer-Windows-x64-v%APP_VERSION%.zip' -Force"

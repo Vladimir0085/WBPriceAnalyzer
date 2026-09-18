@@ -501,6 +501,7 @@ class Database:
         calculation: RunCalculation,
         stored_paths: dict[str, Path],
         replace_run_ids: list[int] | None = None,
+        allow_period_change: bool = False,
     ) -> int:
         totals = calculation.totals()
         replace_ids = sorted(set(replace_run_ids or []))
@@ -524,14 +525,22 @@ class Database:
                     _date_text(calculation.period_start),
                     _date_text(calculation.period_end),
                 )
-                if any(
+                period_changed = any(
                     (row["period_start"], row["period_end"]) != expected_period
                     for row in replaced
-                ):
+                )
+                if period_changed and not allow_period_change:
                     raise ValueError(
                         "Можно заменять только отчет с тем же периодом"
                     )
                 preserved_name = str(replaced[0]["report_name"] or "").strip()
+                previous_default_name = _default_run_name(
+                    int(replaced[0]["id"]),
+                    replaced[0]["period_start"],
+                    replaced[0]["period_end"],
+                )
+                if preserved_name == previous_default_name:
+                    preserved_name = ""
                 replaced_paths = [
                     str(row["stored_path"])
                     for row in db.execute(

@@ -27,6 +27,7 @@ from .config import APP_TITLE, APP_VERSION, save_storage_location
 from .database import Database
 from .excel_reader import preview_sheet, workbook_sheet_names
 from .exporter import export_calculation, export_run, suggested_export_name
+from .help_content import OVERVIEW_HELP_CONTENT, REPORTS_HELP_CONTENT, HelpContent
 from .models import Product, ProductResult, RunCalculation, RunSummary, ScenarioRow, UnknownProduct
 from .ordering import insert_at_group_end
 from .service import (
@@ -207,6 +208,7 @@ class WBPriceAnalyzerApp(tk.Tk):
         self.history_tab = ttk.Frame(self.notebook, padding=4)
         self.trend_tab = ttk.Frame(self.notebook, padding=4)
         self.comparison_tab = ttk.Frame(self.notebook, padding=4)
+        self.help_tab = ttk.Frame(self.notebook, padding=4)
         self.settings_tab = ttk.Frame(self.notebook, padding=4)
         self.notebook.add(self.overview_tab, text="Обзор")
         self.notebook.add(self.sources_tab, text="Исходные файлы")
@@ -216,6 +218,7 @@ class WBPriceAnalyzerApp(tk.Tk):
         self.notebook.add(self.history_tab, text="История отчетов")
         self.notebook.add(self.trend_tab, text="Динамика")
         self.notebook.add(self.comparison_tab, text="Сравнение периодов")
+        self.notebook.add(self.help_tab, text="Справка")
         self.notebook.add(self.settings_tab, text="Настройки")
 
         self._build_overview_tab()
@@ -226,6 +229,7 @@ class WBPriceAnalyzerApp(tk.Tk):
         self._build_history_tab()
         self._build_trend_tab()
         self._build_comparison_tab()
+        self._build_help_tab()
         self._build_settings_tab()
 
         self.status_var = tk.StringVar(value="Готово")
@@ -764,6 +768,125 @@ class WBPriceAnalyzerApp(tk.Tk):
             widths=[120, 230] + [135] * 14,
         )
 
+    def _build_help_tab(self) -> None:
+        self.help_tab.columnconfigure(0, weight=1)
+        self.help_tab.rowconfigure(1, weight=1)
+        ttk.Label(
+            self.help_tab,
+            text="Справка по исходным документам и расчётам",
+            style="Section.TLabel",
+        ).grid(row=0, column=0, sticky="w", pady=(10, 8))
+
+        help_notebook = ttk.Notebook(self.help_tab)
+        help_notebook.grid(row=1, column=0, sticky="nsew")
+        reports_tab = ttk.Frame(help_notebook, padding=4)
+        overview_tab = ttk.Frame(help_notebook, padding=4)
+        help_notebook.add(reports_tab, text="Загрузка документов")
+        help_notebook.add(overview_tab, text="Показатели «Обзора»")
+
+        self.help_text_widgets = [
+            self._create_help_document(reports_tab, REPORTS_HELP_CONTENT),
+            self._create_help_document(overview_tab, OVERVIEW_HELP_CONTENT),
+        ]
+        self._configure_help_text_theme()
+
+    def _create_help_document(self, parent: ttk.Frame, content: HelpContent) -> tk.Text:
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(0, weight=1)
+        text = tk.Text(
+            parent,
+            wrap="word",
+            relief="flat",
+            borderwidth=0,
+            padx=20,
+            pady=16,
+            cursor="arrow",
+            takefocus=True,
+        )
+        scrollbar = ttk.Scrollbar(parent, orient="vertical", command=text.yview)
+        text.configure(yscrollcommand=scrollbar.set)
+        text.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+
+        text.tag_configure(
+            "title",
+            font=("Segoe UI Semibold", 18),
+            spacing1=2,
+            spacing3=14,
+        )
+        text.tag_configure(
+            "heading",
+            font=("Segoe UI Semibold", 13),
+            spacing1=16,
+            spacing3=7,
+        )
+        text.tag_configure(
+            "subheading",
+            font=("Segoe UI Semibold", 11),
+            spacing1=10,
+            spacing3=4,
+        )
+        text.tag_configure("body", spacing1=2, spacing3=7, lmargin2=2)
+        text.tag_configure(
+            "bullet",
+            spacing1=2,
+            spacing3=5,
+            lmargin1=18,
+            lmargin2=34,
+        )
+        text.tag_configure(
+            "formula",
+            font=("Consolas", 10),
+            spacing1=4,
+            spacing3=7,
+            lmargin1=18,
+            lmargin2=18,
+            rmargin=18,
+        )
+        text.tag_configure(
+            "note",
+            spacing1=5,
+            spacing3=8,
+            lmargin1=18,
+            lmargin2=18,
+            rmargin=18,
+        )
+        text.tag_configure(
+            "warning",
+            font=("Segoe UI Semibold", 10),
+            spacing1=5,
+            spacing3=8,
+            lmargin1=18,
+            lmargin2=18,
+            rmargin=18,
+        )
+        for style, value in content:
+            text.insert("end", f"{value}\n", style)
+        text.configure(state="disabled")
+        return text
+
+    def _configure_help_text_theme(self) -> None:
+        for text in getattr(self, "help_text_widgets", ()):
+            text.configure(
+                background=self.colors["surface"],
+                foreground=self.colors["text"],
+                insertbackground=self.colors["text"],
+                selectbackground=self.colors["selection"],
+                selectforeground=self.colors["text"],
+            )
+            text.tag_configure("title", foreground=self.colors["text"])
+            text.tag_configure("heading", foreground=self.colors["accent"])
+            text.tag_configure("subheading", foreground=self.colors["text"])
+            text.tag_configure("body", foreground=self.colors["text"])
+            text.tag_configure("bullet", foreground=self.colors["text"])
+            text.tag_configure(
+                "formula",
+                foreground=self.colors["text"],
+                background=self.colors["surface_alt"],
+            )
+            text.tag_configure("note", foreground=self.colors["muted"])
+            text.tag_configure("warning", foreground=self.colors["warning"])
+
     def _build_settings_tab(self) -> None:
         settings_upper, settings_table = self._create_resizable_table_layout(
             self.settings_tab,
@@ -1060,11 +1183,8 @@ class WBPriceAnalyzerApp(tk.Tk):
         self.current_calculation = self.db.load_calculation(run_id)
         if not self.overview_selection_explicit:
             self.overview_run_ids = {run_id}
-        self._refresh_overview_calculation()
-        self._populate_sources()
-        self._populate_breakdown()
+        self._refresh_active_report_views()
         self._populate_guide()
-        self._populate_scenario()
         self._populate_quality()
         status = f"Открыт отчет №{self._run_number(run_id)}: {_calculation_period(self.current_calculation)}"
         if self.overview_selection_explicit:
@@ -1074,7 +1194,49 @@ class WBPriceAnalyzerApp(tk.Tk):
     def _on_run_selected(self, _event=None) -> None:
         run_id = self.run_display_to_id.get(self.run_var.get())
         if run_id is not None:
+            # The most recently used selector owns the active report scope.
+            # Choosing the top combobox therefore replaces an earlier multi-selection.
+            self.overview_selection_explicit = False
+            self.overview_run_ids = {run_id}
             self.select_run(run_id)
+
+    def _active_report_run_ids(self) -> list[int]:
+        """Return the active overview scope in history order."""
+        selected = set(self.__dict__.get("overview_run_ids", set()))
+        ordered = [
+            run.id
+            for run in self.__dict__.get("overview_runs", [])
+            if run.id in selected
+        ]
+        ordered.extend(sorted(selected.difference(ordered)))
+        if not ordered and self.__dict__.get("current_run_id") is not None:
+            ordered.append(self.current_run_id)
+        return ordered
+
+    def _active_report_calculation(self) -> RunCalculation | None:
+        calculation = self.__dict__.get("overview_calculation")
+        return calculation if calculation is not None else self.__dict__.get("current_calculation")
+
+    def _active_single_run_id(self, *, notify: bool = False) -> int | None:
+        run_ids = self._active_report_run_ids()
+        if len(run_ids) == 1:
+            return run_ids[0]
+        if notify:
+            messagebox.showinfo(
+                "Сценарий цены",
+                "Изменение плановых цен доступно при выборе одного отчета.\n\n"
+                "Выберите отчет в верхнем списке или оставьте один отчет в окне "
+                "«Выбрать отчеты…».",
+                parent=self,
+            )
+        return None
+
+    def _refresh_active_report_views(self) -> None:
+        """Refresh every tab whose data follows the Overview report scope."""
+        self._refresh_overview_calculation()
+        self._populate_sources()
+        self._populate_breakdown()
+        self._populate_scenario()
 
     def _run_number(self, run_id: int | None) -> str:
         if run_id is None:
@@ -1184,7 +1346,7 @@ class WBPriceAnalyzerApp(tk.Tk):
             return
         self.overview_run_ids = set(dialog.selected_run_ids)
         self.overview_selection_explicit = True
-        self._refresh_overview_calculation()
+        self._refresh_active_report_views()
         self.status_var.set(
             f"Обзор сформирован по {len(self.overview_run_ids)} отчетам: "
             f"{_calculation_period(self.overview_calculation)}"
@@ -1195,7 +1357,7 @@ class WBPriceAnalyzerApp(tk.Tk):
             return
         self.overview_selection_explicit = False
         self.overview_run_ids = {self.current_run_id}
-        self._refresh_overview_calculation()
+        self._refresh_active_report_views()
         self.status_var.set(
             f"Обзор показывает текущий отчет №{self._run_number(self.current_run_id)}"
         )
@@ -1244,13 +1406,13 @@ class WBPriceAnalyzerApp(tk.Tk):
         self._populate_overview()
 
     def _populate_sources(self) -> None:
-        if self.current_run_id is None:
-            return
-        sources = self.db.list_source_files(self.current_run_id)
         self.source_tree.delete(*self.source_tree.get_children())
         self.source_by_iid.clear()
-        for row in sources:
-            iid = str(row["id"])
+        sources: list[tuple[int, dict[str, object]]] = []
+        for run_id in self._active_report_run_ids():
+            sources.extend((run_id, row) for row in self.db.list_source_files(run_id))
+        for run_id, row in sources:
+            iid = f"{run_id}:{row['id']}"
             self.source_by_iid[iid] = row
             variant = str(row.get("report_variant") or "основной")
             report_type = (
@@ -1266,10 +1428,13 @@ class WBPriceAnalyzerApp(tk.Tk):
                 values=(row["original_name"], report_type, row["row_count"], _money(float(row["total_amount"])), period, str(row["file_hash"])[:24]),
             )
         if sources:
-            first = str(sources[0]["id"])
+            first_run_id, first_row = sources[0]
+            first = f"{first_run_id}:{first_row['id']}"
             self.source_tree.selection_set(first)
             self.source_tree.focus(first)
             self._on_source_selected()
+        else:
+            self.clear_xlsx_preview()
 
     def _on_source_selected(self, _event=None) -> None:
         selection = self.source_tree.selection()
@@ -1372,10 +1537,10 @@ class WBPriceAnalyzerApp(tk.Tk):
         self.preview_tree = tree
 
     def _populate_breakdown(self) -> None:
-        calculation = self.current_calculation
+        calculation = self._active_report_calculation()
+        self.breakdown_tree.delete(*self.breakdown_tree.get_children())
         if calculation is None:
             return
-        self.breakdown_tree.delete(*self.breakdown_tree.get_children())
         total = calculation.unallocated_total
         for accrual_type, (count, amount) in calculation.unallocated.items():
             share = amount / total if total else 0.0
@@ -1399,12 +1564,16 @@ class WBPriceAnalyzerApp(tk.Tk):
             )
 
     def _populate_scenario(self) -> None:
-        calculation = self.current_calculation
-        if calculation is None or calculation.run_id is None:
-            return
-        prices = self.db.planned_prices(calculation.run_id)
+        calculation = self._active_report_calculation()
         self.scenario_tree.delete(*self.scenario_tree.get_children())
         self.scenario_rows.clear()
+        if calculation is None:
+            for variable in self.scenario_kpi_vars.values():
+                variable.set("—")
+            self.scenario_count_var.set("")
+            return
+        target_run_id = self._active_single_run_id()
+        prices = self.db.planned_prices(target_run_id) if target_run_id is not None else {}
         planned_revenue_total = 0.0
         planned_net_total = 0.0
         planned_cost_total = 0.0
@@ -1446,7 +1615,13 @@ class WBPriceAnalyzerApp(tk.Tk):
                 cost_sold=planned_cost_total,
             )
         )
-        self.scenario_count_var.set(f"Показано: {len(visible)} из {len(scenarios)}")
+        scope_note = ""
+        active_count = len(self._active_report_run_ids())
+        if active_count > 1:
+            scope_note = f" · {_russian_report_count(active_count)} · цены только для 1 отчета"
+        self.scenario_count_var.set(
+            f"Показано: {len(visible)} из {len(scenarios)}{scope_note}"
+        )
         self._configure_value_tags(self.scenario_tree)
 
     def _reset_scenario_filters(self) -> None:
@@ -1464,7 +1639,8 @@ class WBPriceAnalyzerApp(tk.Tk):
         self.planned_price_var.set(_plain_number(row.planned_price) if row and row.planned_price is not None else "")
 
     def apply_planned_price(self) -> None:
-        if self.current_run_id is None:
+        run_id = self._active_single_run_id(notify=True)
+        if run_id is None:
             return
         selection = self.scenario_tree.selection()
         if not selection:
@@ -1477,24 +1653,27 @@ class WBPriceAnalyzerApp(tk.Tk):
         except ValueError:
             messagebox.showerror("Плановая цена", "Введите неотрицательную цену", parent=self)
             return
-        self.db.save_planned_price(self.current_run_id, selection[0], value)
+        self.db.save_planned_price(run_id, selection[0], value)
         self._populate_scenario()
         self.scenario_tree.selection_set(selection[0])
 
     def apply_batch_percent(self) -> None:
-        if self.current_run_id is None or self.current_calculation is None:
+        run_id = self._active_single_run_id(notify=True)
+        calculation = self._active_report_calculation()
+        if run_id is None or calculation is None:
             return
         percent = self._scenario_percent()
         if percent is None:
             return
-        for result in self.current_calculation.products:
+        for result in calculation.products:
             current = result.average_price()
             if current is not None:
-                self.db.save_planned_price(self.current_run_id, result.article, current * (1 + percent))
+                self.db.save_planned_price(run_id, result.article, current * (1 + percent))
         self._populate_scenario()
 
     def apply_selected_percent(self) -> None:
-        if self.current_run_id is None:
+        run_id = self._active_single_run_id(notify=True)
+        if run_id is None:
             return
         selection = self.scenario_tree.selection()
         if not selection:
@@ -1512,7 +1691,7 @@ class WBPriceAnalyzerApp(tk.Tk):
         percent = self._scenario_percent()
         if percent is None:
             return
-        self.db.save_planned_price(self.current_run_id, article, row.current_price * (1 + percent))
+        self.db.save_planned_price(run_id, article, row.current_price * (1 + percent))
         self._populate_scenario()
         self.scenario_tree.selection_set(article)
         self.scenario_tree.focus(article)
@@ -1529,10 +1708,11 @@ class WBPriceAnalyzerApp(tk.Tk):
         return percent
 
     def reset_scenario(self) -> None:
-        if self.current_run_id is None:
+        run_id = self._active_single_run_id(notify=True)
+        if run_id is None:
             return
         if messagebox.askyesno("Сбросить сценарий", "Вернуть плановые цены к текущим средним?", parent=self):
-            self.db.clear_planned_prices(self.current_run_id)
+            self.db.clear_planned_prices(run_id)
             self._populate_scenario()
 
     def refresh_history(self, selected_run_id: int | None = None) -> None:
@@ -1961,8 +2141,7 @@ class WBPriceAnalyzerApp(tk.Tk):
         self._refresh_cost_catalog_warning()
         if self.current_run_id is not None:
             self.current_calculation = self.db.load_calculation(self.current_run_id)
-            self._refresh_overview_calculation()
-            self._populate_scenario()
+            self._refresh_active_report_views()
 
     def open_cost_catalog_editor(self) -> None:
         dialog = CostCatalogEditorDialog(self, self.db.list_products())
@@ -2043,7 +2222,9 @@ class WBPriceAnalyzerApp(tk.Tk):
             "Используются сохраненные копии исходных XLSX. Начисления известных "
             "артикулов будут учтены даже для архивных товаров и товаров без продаж. "
             "Количество продаж будет заново определено по группам «Продажи» и «Возвраты».\n\n"
-            "Наименования отчетов, историческая себестоимость и плановые цены сохранятся. "
+            "Периоды будут уточнены по фактическим датам продажи. Автоматические названия "
+            "обновятся, а измененные вручную названия сохранятся. Историческая себестоимость "
+            "и плановые цены сохранятся. "
             "Перед перерасчетом приложение автоматически создаст резервную копию. "
             "Продолжить?",
             parent=self,
@@ -2404,11 +2585,13 @@ class WBPriceAnalyzerApp(tk.Tk):
         self.db.set_setting("warn_without_realization", "1" if self.warn_realization_var.get() else "0")
         self.db.set_setting("preview_rows", str(preview_rows))
         self.colors = apply_theme(self, THEME_LABELS[self.theme_var.get()])
+        self._configure_help_text_theme()
         self._restyle_resizable_panes()
         messagebox.showinfo("Настройки", "Настройки сохранены", parent=self)
 
     def _preview_theme(self, _event=None) -> None:
         self.colors = apply_theme(self, THEME_LABELS[self.theme_var.get()])
+        self._configure_help_text_theme()
         self._restyle_resizable_panes()
         for tree in (
             self.overview_tree,
@@ -4170,7 +4353,9 @@ def _parse_number(value: str) -> float:
 
 def _period_text(start: str | None, end: str | None) -> str:
     if start and end:
-        return f"{_date_display(start)}–{_date_display(end)}"
+        start_text = _date_display(start)
+        end_text = _date_display(end)
+        return start_text if start_text == end_text else f"{start_text}–{end_text}"
     return "Период не определен"
 
 
@@ -4197,13 +4382,17 @@ def _file_size(value: int) -> str:
 
 def _calculation_period(calculation: RunCalculation) -> str:
     if calculation.period_start and calculation.period_end:
-        return f"{calculation.period_start:%d.%m.%Y}–{calculation.period_end:%d.%m.%Y}"
+        start = f"{calculation.period_start:%d.%m.%Y}"
+        end = f"{calculation.period_end:%d.%m.%Y}"
+        return start if start == end else f"{start}–{end}"
     return "не определен"
 
 
 def _session_period(session: ImportSession) -> str:
     if session.period_start and session.period_end:
-        return f"{session.period_start:%d.%m.%Y}–{session.period_end:%d.%m.%Y}"
+        start = f"{session.period_start:%d.%m.%Y}"
+        end = f"{session.period_end:%d.%m.%Y}"
+        return start if start == end else f"{start}–{end}"
     return "не определен"
 
 

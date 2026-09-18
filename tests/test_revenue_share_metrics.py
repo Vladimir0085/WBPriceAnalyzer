@@ -9,7 +9,11 @@ from openpyxl import load_workbook
 from wb_app.database import Database
 from wb_app.exporter import export_calculation
 from wb_app.models import ProductResult, RunCalculation
-from wb_app.report_totals import overview_revenue_kpi_values, report_total_value
+from wb_app.report_totals import (
+    overview_revenue_kpi_values,
+    report_total_profitability,
+    report_total_value,
+)
 from wb_app.ui import _result_values
 
 
@@ -74,6 +78,7 @@ class RevenueShareMetricTests(unittest.TestCase):
             ("20.00%", "8.00%", "2.00%", "34.00%"),
         )
         self.assertEqual(report_total_value(report), 290)
+        self.assertAlmostEqual(report_total_profitability(report), 1.45)
 
     def test_history_uses_report_profitability_and_total_net_margin(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

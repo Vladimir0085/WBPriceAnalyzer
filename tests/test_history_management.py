@@ -4,14 +4,31 @@ import sqlite3
 import tempfile
 import unittest
 from contextlib import closing
+from datetime import date
 from pathlib import Path
 
 from wb_app.database import Database
 from wb_app.models import RunCalculation
-from wb_app.ui import WBPriceAnalyzerApp, _filter_runs_by_years, _run_positions, _run_years
+from wb_app.ui import (
+    WBPriceAnalyzerApp,
+    _filter_runs_by_years,
+    _period_text,
+    _run_positions,
+    _run_years,
+)
 
 
 class HistoryManagementTests(unittest.TestCase):
+    def test_single_day_period_is_displayed_once(self) -> None:
+        self.assertEqual(
+            _period_text("2026-08-31", "2026-08-31"),
+            "31.08.2026",
+        )
+        self.assertEqual(
+            _period_text("2026-09-01", "2026-09-06"),
+            "01.09.2026–06.09.2026",
+        )
+
     def test_visible_report_numbers_follow_current_list_positions(self) -> None:
         class RunStub:
             def __init__(self, run_id: int):
@@ -125,6 +142,70 @@ class HistoryManagementTests(unittest.TestCase):
             self.assertEqual(Database(path).list_runs()[0].report_name, "Июльский отчет")
             with self.assertRaises(ValueError):
                 database.rename_run(run_id, "   ")
+
+    def test_period_recalculation_updates_only_automatic_report_name(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            database = Database(Path(directory) / "app.sqlite3")
+            old = RunCalculation(
+                run_id=None,
+                period_start=date(2026, 8, 31),
+                period_end=date(2026, 9, 6),
+                tax_rate=0.06,
+                products=[],
+                unallocated_total=0,
+                unallocated={},
+                accrual_stats={},
+            )
+            old_id = database.save_run(old, {})
+            corrected = RunCalculation(
+                run_id=None,
+                period_start=date(2026, 8, 31),
+                period_end=date(2026, 8, 31),
+                tax_rate=0.06,
+                products=[],
+                unallocated_total=0,
+                unallocated={},
+                accrual_stats={},
+            )
+
+            with self.assertRaises(ValueError):
+                database.save_run(corrected, {}, replace_run_ids=[old_id])
+            corrected_id = database.save_run(
+                corrected,
+                {},
+                replace_run_ids=[old_id],
+                allow_period_change=True,
+            )
+            run = database.list_runs()[0]
+            self.assertEqual(run.id, corrected_id)
+            self.assertEqual(run.period_start, "2026-08-31")
+            self.assertEqual(run.period_end, "2026-08-31")
+            self.assertEqual(
+                run.report_name,
+                "Отчет Wildberries за 31.08.2026",
+            )
+
+            database.rename_run(corrected_id, "Закрытие августа")
+            expanded = RunCalculation(
+                run_id=None,
+                period_start=date(2026, 8, 30),
+                period_end=date(2026, 8, 31),
+                tax_rate=0.06,
+                products=[],
+                unallocated_total=0,
+                unallocated={},
+                accrual_stats={},
+            )
+            database.save_run(
+                expanded,
+                {},
+                replace_run_ids=[corrected_id],
+                allow_period_change=True,
+            )
+            self.assertEqual(
+                database.list_runs()[0].report_name,
+                "Закрытие августа",
+            )
 
     def test_legacy_automatic_id_name_is_removed_on_upgrade(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

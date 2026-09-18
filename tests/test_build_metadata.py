@@ -71,6 +71,23 @@ class BuildMetadataTests(unittest.TestCase):
         self.assertIn("SingleInstanceWindowProbe", smoke_test)
         self.assertIn("Второй экземпляр не завершился", smoke_test)
 
+    def test_windows_package_contains_the_versioned_pdf_instruction(self) -> None:
+        guide = PROJECT_ROOT / "docs" / f"WBPriceAnalyzer_Instruction_v{__version__}.pdf"
+        self.assertTrue(guide.is_file())
+        self.assertGreater(guide.stat().st_size, 50_000)
+        self.assertEqual(guide.read_bytes()[:5], b"%PDF-")
+
+        workflow = (PROJECT_ROOT / ".github/workflows/windows-build.yml").read_text(
+            encoding="utf-8"
+        )
+        batch = (PROJECT_ROOT / "build_windows.bat").read_text(encoding="utf-8")
+        generator = (PROJECT_ROOT / "scripts" / "generate_user_manual_pdf.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("WBPriceAnalyzer_Instruction_v$version.pdf", workflow)
+        self.assertIn("WBPriceAnalyzer_Instruction_v%APP_VERSION%.pdf", batch)
+        self.assertIn(f'VERSION = "{__version__}"', generator)
+
 
     def test_about_dialog_references_project_repository(self) -> None:
         ui_text = (PROJECT_ROOT / "wb_app/ui.py").read_text(encoding="utf-8")

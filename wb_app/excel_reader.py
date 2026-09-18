@@ -38,15 +38,17 @@ KNOWN_WB_HEADERS = {
     "Вознаграждение Вайлдберриз (ВВ), без НДС", "НДС с Вознаграждения Вайлдберриз",
     "К перечислению Продавцу за реализованный Товар", "Количество доставок",
     "Количество возврата", "Услуги по доставке товара покупателю",
-    "Коэффициент логистики",
+    "Коэффициент логистики", "Коэффициент доставки",
     "Дата начала действия фиксации", "Дата конца действия фиксации",
     "Признак услуги платной доставки", "Общая сумма штрафов",
     "Корректировка Вознаграждения Вайлдберриз (ВВ)",
-    "Виды логистики, штрафов и корректировок ВВ", "Стикер МП",
+    "Виды логистики, штрафов и корректировок ВВ",
+    "Виды доставок, штрафов и корректировок ВВ", "Стикер МП",
     "Наименование банка-эквайера", "Номер офиса", "Наименование офиса доставки",
     "ИНН партнера", "Партнер", "Склад", "Страна", "Тип коробов",
     "Номер таможенной декларации", "Номер сборочного задания", "Код маркировки",
     "ШК", "Srid", "Возмещение издержек по перевозке/по складским операциям с товаром",
+    "Возмещение издержек по перемещению и операционной обработке товара",
     "Организатор перевозки", "Хранение", "Удержания", "Операции на приемке",
     "Фиксированный коэффициент склада по поставке", "Признак продажи юридическому лицу",
     "Номер короба для обработки товара", "Скидка по программе софинансирования",
@@ -278,13 +280,25 @@ def _parse_weekly(ws, header_row: int, parsed: ParsedSource) -> None:
         # WB introduced this optional diagnostic field during summer 2026.
         # Old reports do not contain it, while the monetary logistics column
         # already reflects the coefficient.
-        "logistics_coefficient": _find(columns, "Коэффициент логистики"),
+        "logistics_coefficient": _find(
+            columns,
+            "Коэффициент логистики",
+            "Коэффициент доставки",
+        ),
         "penalty": _required(columns, "Общая сумма штрафов"),
         "commission_adjustment": _required(columns, "Корректировка Вознаграждения Вайлдберриз (ВВ)"),
-        "detail": _required(columns, "Виды логистики, штрафов и корректировок ВВ"),
+        "detail": _required(
+            columns,
+            "Виды логистики, штрафов и корректировок ВВ",
+            "Виды доставок, штрафов и корректировок ВВ",
+        ),
         "country": _required(columns, "Страна"),
         "srid": _required(columns, "Srid"),
-        "carrier": _required(columns, "Возмещение издержек по перевозке/по складским операциям с товаром"),
+        "carrier": _required(
+            columns,
+            "Возмещение издержек по перевозке/по складским операциям с товаром",
+            "Возмещение издержек по перемещению и операционной обработке товара",
+        ),
         "storage": _required(columns, "Хранение"),
         "deductions": _required(columns, "Удержания"),
         "acceptance": _required(columns, "Операции на приемке"),
@@ -356,7 +370,7 @@ def _parse_weekly(ws, header_row: int, parsed: ParsedSource) -> None:
     if not parsed.accrual_rows:
         raise ReportFormatError(f"В отчете нет строк операций: {parsed.path.name}")
 
-    parsed.period_start, parsed.period_end = _dominant_iso_week(dates)
+    parsed.period_start, parsed.period_end = _dominant_report_period(dates)
     if parsed.period_start is not None and parsed.period_end is not None:
         parsed.out_of_period_rows = sum(
             1
@@ -427,12 +441,18 @@ def _parse_buyout_notice(ws, header_row: int, parsed: ParsedSource) -> None:
         parsed.period_end = parsed.period_start + timedelta(days=6)
 
 
-def _dominant_iso_week(dates: list[date]) -> tuple[date | None, date | None]:
+def _dominant_report_period(dates: list[date]) -> tuple[date | None, date | None]:
     if not dates:
         return None, None
     week_starts = [value - timedelta(days=value.weekday()) for value in dates]
-    start = Counter(week_starts).most_common(1)[0][0]
-    return start, start + timedelta(days=6)
+    counts = Counter(week_starts)
+    dominant_week = max(counts, key=lambda value: (counts[value], value))
+    period_dates = [
+        value
+        for value, week_start in zip(dates, week_starts)
+        if week_start == dominant_week
+    ]
+    return min(period_dates), max(period_dates)
 
 
 def _report_number(filename: str) -> str:
