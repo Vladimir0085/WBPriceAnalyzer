@@ -7,7 +7,12 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
 
-from .calculator import calculate_run, discover_unknown_products
+from .calculator import (
+    article_key,
+    calculate_run,
+    discover_unknown_products,
+    index_products_by_article,
+)
 from .config import ensure_app_dirs
 from .database import Database
 from .excel_reader import REPORT_BUYOUT_NOTICE, REPORT_WEEKLY, parse_report
@@ -380,15 +385,27 @@ class AppService:
                     )
                     for item in old.products
                 }
-                referenced_articles = {
-                    row.article
+                historical_article_keys = {
+                    article_key(article) for article in historical_products
+                }
+                current_products_by_key = index_products_by_article(current_products)
+                referenced_article_keys = {
+                    article_key(row.article)
                     for source in parsed_sources
                     for row in source.accrual_rows
                     if row.article
                 }
-                for article in referenced_articles:
-                    if article not in historical_products and article in current_products:
-                        historical_products[article] = current_products[article]
+                referenced_article_keys.update(
+                    article_key(row.article)
+                    for source in parsed_sources
+                    for row in source.buyout_notice_rows
+                    if row.article
+                )
+                for key in referenced_article_keys:
+                    if key not in historical_article_keys and key in current_products_by_key:
+                        product = current_products_by_key[key]
+                        historical_products[product.article] = product
+                        historical_article_keys.add(key)
 
                 calculation = calculate_run(
                     parsed_sources,
@@ -397,9 +414,9 @@ class AppService:
                 )
                 calculation.source_period_warnings = list(old.source_period_warnings)
 
-                old_by_article = {item.article: item for item in old.products}
+                old_by_article = {article_key(item.article): item for item in old.products}
                 for item in calculation.products:
-                    previous = old_by_article.get(item.article)
+                    previous = old_by_article.get(article_key(item.article))
                     if _result_has_activity(item) and (
                         previous is None or not _result_has_activity(previous)
                     ):
