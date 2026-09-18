@@ -1183,11 +1183,8 @@ class WBPriceAnalyzerApp(tk.Tk):
         self.current_calculation = self.db.load_calculation(run_id)
         if not self.overview_selection_explicit:
             self.overview_run_ids = {run_id}
-        self._refresh_overview_calculation()
-        self._populate_sources()
-        self._populate_breakdown()
+        self._refresh_active_report_views()
         self._populate_guide()
-        self._populate_scenario()
         self._populate_quality()
         status = f"Открыт отчет №{self._run_number(run_id)}: {_calculation_period(self.current_calculation)}"
         if self.overview_selection_explicit:
@@ -1197,7 +1194,49 @@ class WBPriceAnalyzerApp(tk.Tk):
     def _on_run_selected(self, _event=None) -> None:
         run_id = self.run_display_to_id.get(self.run_var.get())
         if run_id is not None:
+            # The most recently used selector owns the active report scope.
+            # Choosing the top combobox therefore replaces an earlier multi-selection.
+            self.overview_selection_explicit = False
+            self.overview_run_ids = {run_id}
             self.select_run(run_id)
+
+    def _active_report_run_ids(self) -> list[int]:
+        """Return the active overview scope in history order."""
+        selected = set(self.__dict__.get("overview_run_ids", set()))
+        ordered = [
+            run.id
+            for run in self.__dict__.get("overview_runs", [])
+            if run.id in selected
+        ]
+        ordered.extend(sorted(selected.difference(ordered)))
+        if not ordered and self.__dict__.get("current_run_id") is not None:
+            ordered.append(self.current_run_id)
+        return ordered
+
+    def _active_report_calculation(self) -> RunCalculation | None:
+        calculation = self.__dict__.get("overview_calculation")
+        return calculation if calculation is not None else self.__dict__.get("current_calculation")
+
+    def _active_single_run_id(self, *, notify: bool = False) -> int | None:
+        run_ids = self._active_report_run_ids()
+        if len(run_ids) == 1:
+            return run_ids[0]
+        if notify:
+            messagebox.showinfo(
+                "Сценарий цены",
+                "Изменение плановых цен доступно при выборе одного отчета.\n\n"
+                "Выберите отчет в верхнем списке или оставьте один отчет в окне "
+                "«Выбрать отчеты…».",
+                parent=self,
+            )
+        return None
+
+    def _refresh_active_report_views(self) -> None:
+        """Refresh every tab whose data follows the Overview report scope."""
+        self._refresh_overview_calculation()
+        self._populate_sources()
+        self._populate_breakdown()
+        self._populate_scenario()
 
     def _run_number(self, run_id: int | None) -> str:
         if run_id is None:
@@ -1307,7 +1346,7 @@ class WBPriceAnalyzerApp(tk.Tk):
             return
         self.overview_run_ids = set(dialog.selected_run_ids)
         self.overview_selection_explicit = True
-        self._refresh_overview_calculation()
+        self._refresh_active_report_views()
         self.status_var.set(
             f"Обзор сформирован по {len(self.overview_run_ids)} отчетам: "
             f"{_calculation_period(self.overview_calculation)}"
@@ -1318,7 +1357,7 @@ class WBPriceAnalyzerApp(tk.Tk):
             return
         self.overview_selection_explicit = False
         self.overview_run_ids = {self.current_run_id}
-        self._refresh_overview_calculation()
+        self._refresh_active_report_views()
         self.status_var.set(
             f"Обзор показывает текущий отчет №{self._run_number(self.current_run_id)}"
         )
@@ -1367,13 +1406,13 @@ class WBPriceAnalyzerApp(tk.Tk):
         self._populate_overview()
 
     def _populate_sources(self) -> None:
-        if self.current_run_id is None:
-            return
-        sources = self.db.list_source_files(self.current_run_id)
         self.source_tree.delete(*self.source_tree.get_children())
         self.source_by_iid.clear()
-        for row in sources:
-            iid = str(row["id"])
+        sources: list[tuple[int, dict[str, object]]] = []
+        for run_id in self._active_report_run_ids():
+            sources.extend((run_id, row) for row in self.db.list_source_files(run_id))
+        for run_id, row in sources:
+            iid = f"{run_id}:{row['id']}"
             self.source_by_iid[iid] = row
             variant = str(row.get("report_variant") or "основной")
             report_type = (
@@ -1389,10 +1428,13 @@ class WBPriceAnalyzerApp(tk.Tk):
                 values=(row["original_name"], report_type, row["row_count"], _money(float(row["total_amount"])), period, str(row["file_hash"])[:24]),
             )
         if sources:
-            first = str(sources[0]["id"])
+            first_run_id, first_row = sources[0]
+            first = f"{first_run_id}:{first_row['id']}"
             self.source_tree.selection_set(first)
             self.source_tree.focus(first)
             self._on_source_selected()
+        else:
+            self.clear_xlsx_preview()
 
     def _on_source_selected(self, _event=None) -> None:
         selection = self.source_tree.selection()
@@ -1495,10 +1537,10 @@ class WBPriceAnalyzerApp(tk.Tk):
         self.preview_tree = tree
 
     def _populate_breakdown(self) -> None:
-        calculation = self.current_calculation
+        calculation = self._active_report_calculation()
+        self.breakdown_tree.delete(*self.breakdown_tree.get_children())
         if calculation is None:
             return
-        self.breakdown_tree.delete(*self.breakdown_tree.get_children())
         total = calculation.unallocated_total
         for accrual_type, (count, amount) in calculation.unallocated.items():
             share = amount / total if total else 0.0
@@ -1522,12 +1564,16 @@ class WBPriceAnalyzerApp(tk.Tk):
             )
 
     def _populate_scenario(self) -> None:
-        calculation = self.current_calculation
-        if calculation is None or calculation.run_id is None:
-            return
-        prices = self.db.planned_prices(calculation.run_id)
+        calculation = self._active_report_calculation()
         self.scenario_tree.delete(*self.scenario_tree.get_children())
         self.scenario_rows.clear()
+        if calculation is None:
+            for variable in self.scenario_kpi_vars.values():
+                variable.set("—")
+            self.scenario_count_var.set("")
+            return
+        target_run_id = self._active_single_run_id()
+        prices = self.db.planned_prices(target_run_id) if target_run_id is not None else {}
         planned_revenue_total = 0.0
         planned_net_total = 0.0
         planned_cost_total = 0.0
@@ -1569,7 +1615,13 @@ class WBPriceAnalyzerApp(tk.Tk):
                 cost_sold=planned_cost_total,
             )
         )
-        self.scenario_count_var.set(f"Показано: {len(visible)} из {len(scenarios)}")
+        scope_note = ""
+        active_count = len(self._active_report_run_ids())
+        if active_count > 1:
+            scope_note = f" · {_russian_report_count(active_count)} · цены только для 1 отчета"
+        self.scenario_count_var.set(
+            f"Показано: {len(visible)} из {len(scenarios)}{scope_note}"
+        )
         self._configure_value_tags(self.scenario_tree)
 
     def _reset_scenario_filters(self) -> None:
@@ -1587,7 +1639,8 @@ class WBPriceAnalyzerApp(tk.Tk):
         self.planned_price_var.set(_plain_number(row.planned_price) if row and row.planned_price is not None else "")
 
     def apply_planned_price(self) -> None:
-        if self.current_run_id is None:
+        run_id = self._active_single_run_id(notify=True)
+        if run_id is None:
             return
         selection = self.scenario_tree.selection()
         if not selection:
@@ -1600,24 +1653,27 @@ class WBPriceAnalyzerApp(tk.Tk):
         except ValueError:
             messagebox.showerror("Плановая цена", "Введите неотрицательную цену", parent=self)
             return
-        self.db.save_planned_price(self.current_run_id, selection[0], value)
+        self.db.save_planned_price(run_id, selection[0], value)
         self._populate_scenario()
         self.scenario_tree.selection_set(selection[0])
 
     def apply_batch_percent(self) -> None:
-        if self.current_run_id is None or self.current_calculation is None:
+        run_id = self._active_single_run_id(notify=True)
+        calculation = self._active_report_calculation()
+        if run_id is None or calculation is None:
             return
         percent = self._scenario_percent()
         if percent is None:
             return
-        for result in self.current_calculation.products:
+        for result in calculation.products:
             current = result.average_price()
             if current is not None:
-                self.db.save_planned_price(self.current_run_id, result.article, current * (1 + percent))
+                self.db.save_planned_price(run_id, result.article, current * (1 + percent))
         self._populate_scenario()
 
     def apply_selected_percent(self) -> None:
-        if self.current_run_id is None:
+        run_id = self._active_single_run_id(notify=True)
+        if run_id is None:
             return
         selection = self.scenario_tree.selection()
         if not selection:
@@ -1635,7 +1691,7 @@ class WBPriceAnalyzerApp(tk.Tk):
         percent = self._scenario_percent()
         if percent is None:
             return
-        self.db.save_planned_price(self.current_run_id, article, row.current_price * (1 + percent))
+        self.db.save_planned_price(run_id, article, row.current_price * (1 + percent))
         self._populate_scenario()
         self.scenario_tree.selection_set(article)
         self.scenario_tree.focus(article)
@@ -1652,10 +1708,11 @@ class WBPriceAnalyzerApp(tk.Tk):
         return percent
 
     def reset_scenario(self) -> None:
-        if self.current_run_id is None:
+        run_id = self._active_single_run_id(notify=True)
+        if run_id is None:
             return
         if messagebox.askyesno("Сбросить сценарий", "Вернуть плановые цены к текущим средним?", parent=self):
-            self.db.clear_planned_prices(self.current_run_id)
+            self.db.clear_planned_prices(run_id)
             self._populate_scenario()
 
     def refresh_history(self, selected_run_id: int | None = None) -> None:
@@ -2084,8 +2141,7 @@ class WBPriceAnalyzerApp(tk.Tk):
         self._refresh_cost_catalog_warning()
         if self.current_run_id is not None:
             self.current_calculation = self.db.load_calculation(self.current_run_id)
-            self._refresh_overview_calculation()
-            self._populate_scenario()
+            self._refresh_active_report_views()
 
     def open_cost_catalog_editor(self) -> None:
         dialog = CostCatalogEditorDialog(self, self.db.list_products())

@@ -38,6 +38,10 @@ class HelpContentTests(unittest.TestCase):
             text,
         )
         self.assertIn("Комиссия остаётся комиссией нетто", text)
+        self.assertIn("Действует тот способ, который был использован последним", text)
+        self.assertIn("«Исходные файлы»", text)
+        self.assertIn("«Разбивка»", text)
+        self.assertIn("«Сценарий цены»", text)
 
     def test_base_ui_exposes_help_tab_builder(self) -> None:
         self.assertTrue(callable(getattr(WBPriceAnalyzerApp, "_build_help_tab", None)))
