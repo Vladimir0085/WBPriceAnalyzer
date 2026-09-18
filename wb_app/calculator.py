@@ -12,6 +12,33 @@ class CalculationError(ValueError):
     pass
 
 
+def article_key(value: str) -> str:
+    """Return the comparison key used for supplier articles from WB reports."""
+    return value.strip().casefold()
+
+
+def index_products_by_article(products: dict[str, Product]) -> dict[str, Product]:
+    indexed: dict[str, Product] = {}
+    conflicts: dict[str, set[str]] = defaultdict(set)
+    for product in products.values():
+        key = article_key(product.article)
+        existing = indexed.get(key)
+        if existing is not None and existing.article != product.article:
+            conflicts[key].update((existing.article, product.article))
+            continue
+        indexed[key] = product
+    if conflicts:
+        variants = "; ".join(
+            ", ".join(sorted(values, key=str.casefold))
+            for _key, values in sorted(conflicts.items())
+        )
+        raise CalculationError(
+            "В справочнике есть артикулы, которые отличаются только регистром: "
+            f"{variants}. Оставьте один вариант каждого артикула."
+        )
+    return indexed
+
+
 def _type_key(value: str) -> str:
     return normalize_text(value).replace("ё", "е")
 
@@ -54,30 +81,43 @@ def guide_target(accrual_type: str) -> str:
 def build_sku_map(rows, allowed_articles: set[str] | None = None) -> tuple[dict[str, str], set[str]]:
     mapping: dict[str, str] = {}
     conflicts: set[str] = set()
+    allowed_by_key = (
+        {article_key(article): article for article in allowed_articles}
+        if allowed_articles is not None
+        else None
+    )
     for row in rows:
         if not row.sku or not row.article:
             continue
-        if allowed_articles is not None and row.article not in allowed_articles:
+        row_article_key = article_key(row.article)
+        if allowed_by_key is not None and row_article_key not in allowed_by_key:
             continue
+        canonical_article = (
+            allowed_by_key[row_article_key]
+            if allowed_by_key is not None
+            else row.article
+        )
         if row.sku in conflicts:
             continue
         existing = mapping.get(row.sku)
-        if existing and existing != row.article:
+        if existing and article_key(existing) != row_article_key:
             mapping.pop(row.sku, None)
             conflicts.add(row.sku)
         else:
-            mapping[row.sku] = row.article
+            mapping[row.sku] = canonical_article
     return mapping, conflicts
 
 
 def discover_unknown_products(sources: list[ParsedSource], products: dict[str, Product]) -> list[UnknownProduct]:
     rows, _unused = all_rows(sources)
+    known_article_keys = set(index_products_by_article(products))
     unknown: dict[str, UnknownProduct] = {}
     for row in rows:
-        if not row.article or row.article in products:
+        key = article_key(row.article)
+        if not key or key in known_article_keys:
             continue
         item = unknown.setdefault(
-            row.article,
+            key,
             UnknownProduct(
                 article=row.article,
                 name=row.product_name or row.article,
@@ -91,10 +131,11 @@ def discover_unknown_products(sources: list[ParsedSource], products: dict[str, P
         item.source_names.add(row.source_name)
     for source in sources:
         for row in source.buyout_notice_rows:
-            if not row.article or row.article in products:
+            key = article_key(row.article)
+            if not key or key in known_article_keys:
                 continue
             item = unknown.setdefault(
-                row.article,
+                key,
                 UnknownProduct(
                     article=row.article,
                     name=row.product_name or row.article,
@@ -183,26 +224,29 @@ def calculate_run(
     tax_rate: float,
     skipped_articles: set[str] | None = None,
 ) -> RunCalculation:
-    skipped_articles = skipped_articles or set()
+    skipped_article_keys = {
+        article_key(article) for article in (skipped_articles or set())
+    }
     rows, _unused = all_rows(sources)
     if not rows:
         raise CalculationError("В выбранных файлах нет операций Wildberries")
 
-    referenced_articles = {row.article for row in rows if row.article}
-    referenced_articles.update(
-        row.article
+    products_by_key = index_products_by_article(products)
+    referenced_article_keys = {article_key(row.article) for row in rows if row.article}
+    referenced_article_keys.update(
+        article_key(row.article)
         for source in sources
         for row in source.buyout_notice_rows
         if row.article
     )
     calculation_products = {
-        article: product
-        for article, product in products.items()
-        if (product.active or article in referenced_articles)
-        and article not in skipped_articles
+        key: product
+        for key, product in products_by_key.items()
+        if (product.active or key in referenced_article_keys)
+        and key not in skipped_article_keys
     }
     results = {
-        article: ProductResult(
+        key: ProductResult(
             article=product.article,
             name=product.name,
             material_cost=product.material_cost,
@@ -215,13 +259,17 @@ def calculate_run(
             main_seller_payout=0.0,
             scenario_market_revenue=0.0,
         )
-        for article, product in calculation_products.items()
+        for key, product in calculation_products.items()
     }
-    _sku_map, sku_conflicts = build_sku_map(rows, set(results))
+    _sku_map, sku_conflicts = build_sku_map(
+        rows,
+        {product.article for product in calculation_products.values()},
+    )
 
     stats_raw: dict[str, list[object]] = {}
     breakdown_raw: dict[str, list[object]] = {}
     skipped_detail: dict[str, str] = {}
+    skipped_labels: dict[str, str] = {}
     skipped_amounts: dict[str, float] = defaultdict(float)
     allocated_total = 0.0
     skipped_total = 0.0
@@ -244,14 +292,16 @@ def calculate_run(
             detail[2] = float(detail[2]) + row.amount
             continue
 
-        result = results.get(row.article)
-        if result is None or row.article in skipped_articles:
+        row_article_key = article_key(row.article)
+        result = results.get(row_article_key)
+        if result is None or row_article_key in skipped_article_keys:
+            skipped_labels.setdefault(row_article_key, row.article)
             skipped_detail.setdefault(
-                row.article,
+                row_article_key,
                 f"{row.article} — {row.product_name or row.article} "
                 f"({row.source_name}, строка {row.row_number})",
             )
-            skipped_amounts[row.article] += row.amount
+            skipped_amounts[row_article_key] += row.amount
             skipped_total += row.amount
             continue
 
@@ -288,36 +338,40 @@ def calculate_run(
         rows_by_article: dict[str, list[AccrualRow]] = defaultdict(list)
         for row in detail.accrual_rows:
             if row.article:
-                rows_by_article[row.article].append(row)
-        notice_articles = {row.article for row in notice.buyout_notice_rows}
-        for article, linked_rows in rows_by_article.items():
-            result = results.get(article)
-            if result is None or article in skipped_articles:
+                rows_by_article[article_key(row.article)].append(row)
+        notice_articles = {
+            article_key(row.article) for row in notice.buyout_notice_rows
+        }
+        for linked_article_key, linked_rows in rows_by_article.items():
+            result = results.get(linked_article_key)
+            if result is None or linked_article_key in skipped_article_keys:
                 continue
-            if article in notice_articles:
+            if linked_article_key in notice_articles:
                 result.financial_result += sum(_buyout_extra_amount(row) for row in linked_rows)
             else:
                 result.financial_result += sum(row.amount for row in linked_rows)
                 if any(_is_sale_document(row) and row.seller_payout for row in linked_rows):
                     buyout_control_warnings.append(
-                        f"Выкуп №{report_number}, артикул {article}: в детализации есть "
+                        f"Выкуп №{report_number}, артикул {result.article}: в детализации есть "
                         "продажа, но товар отсутствует в уведомлении."
                     )
         for notice_row in notice.buyout_notice_rows:
-            result = results.get(notice_row.article)
-            if result is None or notice_row.article in skipped_articles:
+            notice_article_key = article_key(notice_row.article)
+            result = results.get(notice_article_key)
+            if result is None or notice_article_key in skipped_article_keys:
+                skipped_labels.setdefault(notice_article_key, notice_row.article)
                 skipped_detail.setdefault(
-                    notice_row.article,
+                    notice_article_key,
                     f"{notice_row.article} — {notice_row.product_name or notice_row.article} "
                     f"({notice_row.source_name}, строка {notice_row.row_number})",
                 )
-                skipped_amounts[notice_row.article] += notice_row.amount
+                skipped_amounts[notice_article_key] += notice_row.amount
                 continue
             result.buyout_units = float(result.buyout_units or 0.0) + notice_row.quantity
             result.buyout_revenue = float(result.buyout_revenue or 0.0) + notice_row.amount
             result.financial_result += notice_row.amount
 
-            linked_rows = rows_by_article.get(notice_row.article, [])
+            linked_rows = rows_by_article.get(notice_article_key, [])
             gross_sales = sum(
                 row.quantity
                 for row in linked_rows
@@ -343,13 +397,13 @@ def calculate_run(
             ) - sum(row.logistics for row in linked_rows)
             if abs(gross_sales - notice_row.quantity) > 0.001:
                 buyout_control_warnings.append(
-                    f"Выкуп №{report_number}, артикул {notice_row.article}: "
+                    f"Выкуп №{report_number}, артикул {result.article}: "
                     f"количество в уведомлении {notice_row.quantity:g}, "
                     f"продаж в детализации {gross_sales:g}."
                 )
             if abs(bridge - notice_row.amount) > 0.01:
                 buyout_control_warnings.append(
-                    f"Выкуп №{report_number}, артикул {notice_row.article}: "
+                    f"Выкуп №{report_number}, артикул {result.article}: "
                     f"цена уведомления {notice_row.amount:.2f} руб., "
                     f"контроль по детализации {bridge:.2f} руб."
                 )
@@ -365,9 +419,11 @@ def calculate_run(
             f"расхождение {allocation_difference:.2f} руб."
         )
 
-    for article, amount in skipped_amounts.items():
-        skipped_detail[article] = (
-            f"{skipped_detail[article]}; пропущенный финансовый результат — "
+    skipped_output: dict[str, str] = {}
+    for key, amount in skipped_amounts.items():
+        label = skipped_labels[key]
+        skipped_output[label] = (
+            f"{skipped_detail[key]}; пропущенный финансовый результат — "
             f"{_money_ru(amount)}"
         )
 
@@ -407,7 +463,7 @@ def calculate_run(
         unallocated=unallocated,
         accrual_stats=stats,
         source_files=sources,
-        skipped_articles=skipped_detail,
+        skipped_articles=skipped_output,
         sku_conflicts=sku_conflicts,
         realization_revenue=sum(result.revenue_including_points for result in results.values()),
         realization_units=sum(result.units for result in results.values()),
