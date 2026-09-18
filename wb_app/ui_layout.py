@@ -91,7 +91,7 @@ class HeadingTooltipManager:
 
 @dataclass
 class StaticTableLayout:
-    tab:ttk.Frame;shell:ttk.Frame;upper:ttk.Frame;toolbar:ttk.Frame;table:ttk.Frame;min_upper:int
+    tab:ttk.Frame;shell:ttk.Frame;upper:ttk.Frame;toolbar:ttk.Frame;table:ttk.Frame;min_upper:int;table_fraction:float|None=None
 
 class DetachedTableWindow:
     def __init__(self,controller:"TableModeController",action_label:str|None=None,action:Callable[[],None]|None=None)->None:
@@ -218,19 +218,29 @@ class DisplayWBPriceAnalyzerApp(WBPriceAnalyzerApp):
         self._fit_to_screen();self._apply_saved_ui_scale()
     def _build_ui(self)->None:
         super()._build_ui();self._heading_tooltips=HeadingTooltipManager(self);self._install_scale_control();self.after_idle(self._protect_all_layouts)
-    def _create_resizable_table_layout(self,tab:ttk.Frame,*,upper_minsize:int,table_minsize:int=150)->tuple[ttk.Frame,ttk.Frame]:
+    def _create_resizable_table_layout(self,tab:ttk.Frame,*,upper_minsize:int,table_minsize:int=150,table_fraction:float|None=None)->tuple[ttk.Frame,ttk.Frame]:
         tab.columnconfigure(0,weight=1);tab.rowconfigure(0,weight=1);shell=ttk.Frame(tab);shell.grid(row=0,column=0,sticky="nsew");shell.columnconfigure(0,weight=1)
-        shell.rowconfigure(0,weight=0,minsize=upper_minsize);shell.rowconfigure(1,weight=0);shell.rowconfigure(2,weight=1,minsize=max(110,min(table_minsize,150)))
+        if table_fraction is None:
+            shell.rowconfigure(0,weight=0,minsize=upper_minsize);shell.rowconfigure(2,weight=1,minsize=max(110,min(table_minsize,150)))
+        else:
+            table_fraction=max(0.4,min(float(table_fraction),0.7));group=f"split_{id(shell)}";upper_weight=max(1,round((1.0-table_fraction)*100));table_weight=max(1,round(table_fraction*100))
+            shell.rowconfigure(0,weight=upper_weight,minsize=0,uniform=group);shell.rowconfigure(2,weight=table_weight,minsize=max(110,min(table_minsize,150)),uniform=group)
+        shell.rowconfigure(1,weight=0)
         upper=ttk.Frame(shell);upper.grid(row=0,column=0,sticky="nsew");upper.columnconfigure(0,weight=1)
         toolbar=ttk.Frame(shell,padding=(0,2));toolbar.grid(row=1,column=0,sticky="ew");ttk.Separator(toolbar,orient="horizontal").grid(row=0,column=0,sticky="ew",padx=(0,8))
         table=ttk.Frame(shell);table.grid(row=2,column=0,sticky="nsew");table.columnconfigure(0,weight=1);table.rowconfigure(0,weight=1)
-        layout=StaticTableLayout(tab,shell,upper,toolbar,table,upper_minsize);self._table_layouts[tab]=layout;self.after_idle(lambda:self._protect_layout(layout));return upper,table
+        layout=StaticTableLayout(tab,shell,upper,toolbar,table,upper_minsize,table_fraction);self._table_layouts[tab]=layout;self.after_idle(lambda:self._protect_layout(layout));return upper,table
     def _create_tree(self,parent,columns:list[str],headings:list[str],row:int,widths:list[int]|None=None,height:int=18)->ttk.Treeview:
         tree=super()._create_tree(parent,columns,headings,row,widths,height);self.after_idle(lambda:self._ensure_tree(tree));return tree
     def _ensure_tree(self,tree:ttk.Treeview)->None:
         if self._heading_tooltips:self._heading_tooltips.ensure(tree)
     def _protect_layout(self,layout:StaticTableLayout)->None:
-        try:layout.shell.rowconfigure(0,minsize=max(layout.min_upper,layout.upper.winfo_reqheight()),weight=0);layout.shell.rowconfigure(2,minsize=110,weight=1)
+        try:
+            if layout.table_fraction is None:
+                layout.shell.rowconfigure(0,minsize=max(layout.min_upper,layout.upper.winfo_reqheight()),weight=0);layout.shell.rowconfigure(2,minsize=110,weight=1)
+            else:
+                group=f"split_{id(layout.shell)}";upper_weight=max(1,round((1.0-layout.table_fraction)*100));table_weight=max(1,round(layout.table_fraction*100))
+                layout.shell.rowconfigure(0,minsize=0,weight=upper_weight,uniform=group);layout.shell.rowconfigure(2,minsize=110,weight=table_weight,uniform=group)
         except tk.TclError:pass
     def _protect_all_layouts(self)->None:
         for layout in self._table_layouts.values():self._protect_layout(layout)

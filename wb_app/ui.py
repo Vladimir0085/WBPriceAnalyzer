@@ -268,13 +268,14 @@ class WBPriceAnalyzerApp(tk.Tk):
     def _build_overview_tab(self) -> None:
         overview_upper, overview_table = self._create_resizable_table_layout(
             self.overview_tab,
-            upper_minsize=250,
+            upper_minsize=210,
+            table_fraction=0.5,
         )
         overview_upper.rowconfigure(3, weight=0)
         overview_header = ttk.Frame(overview_upper)
-        overview_header.grid(row=0, column=0, sticky="ew", pady=(10, 8))
+        overview_header.grid(row=0, column=0, sticky="ew", pady=(4, 4))
         overview_header.columnconfigure(1, weight=1)
-        ttk.Label(overview_header, text="Итоговый отчет", style="Section.TLabel").grid(
+        ttk.Label(overview_header, text="Итоговый отчет", style="CompactSection.TLabel").grid(
             row=0, column=0, sticky="w"
         )
         self.overview_scope_var = tk.StringVar(value="Текущий отчет")
@@ -286,21 +287,22 @@ class WBPriceAnalyzerApp(tk.Tk):
         ttk.Button(
             overview_header,
             text="Выбрать отчеты…",
-            style="Accent.TButton",
+            style="CompactAccent.TButton",
             command=self.choose_overview_reports,
         ).grid(row=0, column=2, padx=(0, 8))
         ttk.Button(
             overview_header,
             text="Только текущий",
+            style="Compact.TButton",
             command=self.use_current_report_in_overview,
         ).grid(row=0, column=3)
         self.kpi_frame = ttk.Frame(overview_upper)
-        self.kpi_frame.grid(row=1, column=0, sticky="ew", pady=(0, 12))
+        self.kpi_frame.grid(row=1, column=0, sticky="ew", pady=(0, 4))
         for column in range(6):
             self.kpi_frame.columnconfigure(column, weight=1)
         self.overview_totals_title_var = tk.StringVar(value="Итоги по отчету")
         ttk.Label(self.kpi_frame, textvariable=self.overview_totals_title_var, style="Muted.TLabel").grid(
-            row=0, column=0, columnspan=6, sticky="w", pady=(0, 6)
+            row=0, column=0, columnspan=6, sticky="w", pady=(0, 2)
         )
         self.kpi_vars: dict[str, tk.StringVar] = {}
         cards = [
@@ -313,21 +315,21 @@ class WBPriceAnalyzerApp(tk.Tk):
         ]
         for index, (key, title) in enumerate(cards):
             self.kpi_vars[key] = tk.StringVar(value="—")
-            card = ttk.Frame(self.kpi_frame, style="Card.TFrame", padding=(16, 14))
+            card = ttk.Frame(self.kpi_frame, style="Card.TFrame", padding=(8, 5))
             card.grid(row=1, column=index, sticky="nsew", padx=(0 if index == 0 else 5, 0 if index == 5 else 5))
-            ttk.Label(card, text=title, style="CardMuted.TLabel").grid(row=0, column=0, sticky="w")
-            ttk.Label(card, textvariable=self.kpi_vars[key], style="Kpi.TLabel").grid(
-                row=1, column=0, sticky="w", pady=(5, 0)
+            ttk.Label(card, text=title, style="CompactCardMuted.TLabel").grid(row=0, column=0, sticky="w")
+            ttk.Label(card, textvariable=self.kpi_vars[key], style="CompactKpi.TLabel").grid(
+                row=1, column=0, sticky="w", pady=(1, 0)
             )
 
         category_header = ttk.Frame(self.kpi_frame)
-        category_header.grid(row=2, column=0, columnspan=6, sticky="ew", pady=(14, 6))
+        category_header.grid(row=2, column=0, columnspan=6, sticky="ew", pady=(4, 2))
         category_header.columnconfigure(0, weight=1)
         self.category_summary_title_var = tk.StringVar(value="Итоги по товарам выбранной категории")
         ttk.Label(
             category_header,
             textvariable=self.category_summary_title_var,
-            style="Section.TLabel",
+            style="CompactSection.TLabel",
         ).grid(row=0, column=0, sticky="w")
         ttk.Label(
             category_header,
@@ -346,37 +348,51 @@ class WBPriceAnalyzerApp(tk.Tk):
         ]
         for index, (key, title) in enumerate(category_cards):
             self.category_kpi_vars[key] = tk.StringVar(value="—")
-            card = ttk.Frame(self.kpi_frame, style="Card.TFrame", padding=(16, 12))
+            card = ttk.Frame(self.kpi_frame, style="Card.TFrame", padding=(8, 5))
             card.grid(
                 row=3,
                 column=index,
                 sticky="nsew",
                 padx=(0 if index == 0 else 5, 0 if index == 5 else 5),
             )
-            ttk.Label(card, text=title, style="CardMuted.TLabel").grid(row=0, column=0, sticky="w")
-            ttk.Label(card, textvariable=self.category_kpi_vars[key], style="Kpi.TLabel").grid(
-                row=1, column=0, sticky="w", pady=(4, 0)
+            ttk.Label(card, text=title, style="CompactCardMuted.TLabel").grid(row=0, column=0, sticky="w")
+            ttk.Label(card, textvariable=self.category_kpi_vars[key], style="CompactKpi.TLabel").grid(
+                row=1, column=0, sticky="w", pady=(1, 0)
             )
 
         filters = ttk.Frame(overview_upper)
-        filters.grid(row=2, column=0, sticky="ew", pady=(0, 10))
+        filters.grid(row=2, column=0, sticky="ew", pady=(0, 4))
         filters.columnconfigure(10, weight=1)
         ttk.Label(filters, text="Категория:").grid(row=0, column=0, padx=(0, 6))
         self.overview_category_var = tk.StringVar(value=CATEGORY_ALL)
         self.overview_category_combo = ttk.Combobox(
-            filters, textvariable=self.overview_category_var, state="readonly", width=24
+            filters,
+            textvariable=self.overview_category_var,
+            state="readonly",
+            width=24,
+            style="Compact.TCombobox",
         )
         self.overview_category_combo.grid(row=0, column=1, padx=(0, 14))
         self.overview_category_combo.bind("<<ComboboxSelected>>", lambda _event: self._populate_overview())
         ttk.Label(filters, text="Артикул:").grid(row=0, column=2, padx=(0, 6))
         self.overview_article_var = tk.StringVar()
-        overview_search = ttk.Entry(filters, textvariable=self.overview_article_var, width=20)
+        overview_search = ttk.Entry(
+            filters,
+            textvariable=self.overview_article_var,
+            width=20,
+            style="Compact.TEntry",
+        )
         overview_search.grid(row=0, column=3, padx=(0, 14))
         overview_search.bind("<KeyRelease>", lambda _event: self._populate_overview())
         ttk.Label(filters, text="Сортировать:").grid(row=0, column=4, padx=(0, 6))
         self.overview_sort_var = tk.StringVar(value=SORT_NONE)
         overview_sort = ttk.Combobox(
-            filters, textvariable=self.overview_sort_var, values=SORT_METRICS, state="readonly", width=21
+            filters,
+            textvariable=self.overview_sort_var,
+            values=SORT_METRICS,
+            state="readonly",
+            width=21,
+            style="Compact.TCombobox",
         )
         overview_sort.grid(row=0, column=5, padx=(0, 8))
         overview_sort.bind("<<ComboboxSelected>>", lambda _event: self._populate_overview())
@@ -387,10 +403,16 @@ class WBPriceAnalyzerApp(tk.Tk):
             values=(SORT_ASCENDING, SORT_DESCENDING),
             state="readonly",
             width=24,
+            style="Compact.TCombobox",
         )
         overview_direction.grid(row=0, column=6, padx=(0, 8))
         overview_direction.bind("<<ComboboxSelected>>", lambda _event: self._populate_overview())
-        ttk.Button(filters, text="Сбросить", command=self._reset_overview_filters).grid(row=0, column=7)
+        ttk.Button(
+            filters,
+            text="Сбросить",
+            style="Compact.TButton",
+            command=self._reset_overview_filters,
+        ).grid(row=0, column=7)
         self.overview_count_var = tk.StringVar()
         ttk.Label(filters, textvariable=self.overview_count_var, style="Muted.TLabel").grid(
             row=0, column=10, sticky="e"
@@ -1080,6 +1102,7 @@ class WBPriceAnalyzerApp(tk.Tk):
         *,
         upper_minsize: int,
         table_minsize: int = 150,
+        table_fraction: float | None = None,
     ) -> tuple[ttk.Frame, ttk.Frame]:
         """Create a vertically resizable controls/table layout for a tab."""
         tab.columnconfigure(0, weight=1)
@@ -1111,8 +1134,14 @@ class WBPriceAnalyzerApp(tk.Tk):
         def set_initial_position() -> None:
             if not pane.winfo_exists():
                 return
-            available = pane.winfo_height() - table_minsize - 12
+            pane_height = pane.winfo_height()
+            available = pane_height - table_minsize - 12
             requested = max(upper_minsize, upper.winfo_reqheight())
+            if table_fraction is not None:
+                requested = min(
+                    requested,
+                    int(pane_height * (1.0 - table_fraction)),
+                )
             pane.sash_place(0, 0, max(upper_minsize, min(requested, available)))
 
         self.after_idle(set_initial_position)

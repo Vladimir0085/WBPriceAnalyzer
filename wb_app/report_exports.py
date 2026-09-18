@@ -62,6 +62,7 @@ class ReportExportsWBPriceAnalyzerApp(OZParityWBPriceAnalyzerApp):
             self.overview_export_button = ttk.Button(
                 current_button.master,
                 text="Выгрузить итог XLSX",
+                style="Compact.TButton",
                 command=self.export_overview_calculation,
             )
             self.overview_export_button.grid(row=0, column=4, padx=(8, 0))
