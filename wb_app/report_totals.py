@@ -12,6 +12,12 @@ def report_total_value(calculation) -> float:
     return float(calculation.totals()["net_profit"])
 
 
+def report_total_profitability(calculation) -> float:
+    """Return report profit including unallocated amounts per cost sold."""
+    cost_sold = float(calculation.totals()["cost_sold"])
+    return report_total_value(calculation) / cost_sold if cost_sold else 0.0
+
+
 def overview_revenue_kpi_values(calculation) -> dict[str, str]:
     """Format paired monetary and relative KPIs for the Overview tab."""
     amounts = calculation.revenue_amounts()
@@ -42,18 +48,32 @@ class ReportTotalsWBPriceAnalyzerApp(ColumnSettingsWBPriceAnalyzerApp):
                 child.grid_configure(columnspan=7)
 
         self.kpi_vars["report_total"] = tk.StringVar(master=self, value="—")
+        self.kpi_vars["report_total_profitability"] = tk.StringVar(
+            master=self,
+            value="—",
+        )
         card = ttk.Frame(self.kpi_frame, style="Card.TFrame", padding=(16, 14))
         card.grid(row=1, column=6, sticky="nsew", padx=(5, 0))
         ttk.Label(
             card,
             text="Итог отчёта с нераспределёнными",
             style="CardMuted.TLabel",
-        ).grid(row=0, column=0, sticky="w")
+        ).grid(row=0, column=0, columnspan=2, sticky="w")
         ttk.Label(
             card,
             textvariable=self.kpi_vars["report_total"],
             style="Kpi.TLabel",
-        ).grid(row=1, column=0, sticky="w", pady=(5, 0))
+        ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(5, 0))
+        ttk.Label(
+            card,
+            text="Доходность:",
+            style="CardMuted.TLabel",
+        ).grid(row=2, column=0, sticky="w", pady=(7, 0))
+        ttk.Label(
+            card,
+            textvariable=self.kpi_vars["report_total_profitability"],
+            style="Card.TLabel",
+        ).grid(row=2, column=1, sticky="w", padx=(5, 0), pady=(7, 0))
 
     def _install_revenue_share_kpis(self) -> None:
         for child in self.kpi_frame.winfo_children():
@@ -106,10 +126,15 @@ class ReportTotalsWBPriceAnalyzerApp(ColumnSettingsWBPriceAnalyzerApp):
     def _refresh_report_kpis(self) -> None:
         calculation = self.overview_calculation
         report_total = self.kpi_vars.get("report_total")
+        report_total_profitability_var = self.kpi_vars.get(
+            "report_total_profitability"
+        )
         share_variables = getattr(self, "revenue_share_kpi_vars", None)
         if calculation is None:
             if report_total is not None:
                 report_total.set("—")
+            if report_total_profitability_var is not None:
+                report_total_profitability_var.set("—")
             if share_variables:
                 for variable in share_variables.values():
                     variable.set("—")
@@ -131,6 +156,16 @@ class ReportTotalsWBPriceAnalyzerApp(ColumnSettingsWBPriceAnalyzerApp):
         )
         if report_total is not None:
             report_total.set(_money(report_total_value(calculation)))
+        if report_total_profitability_var is not None:
+            report_total_profitability_var.set(
+                _profitability_text(
+                    report_total_profitability(calculation)
+                    if cost_sold
+                    else None,
+                    units=units,
+                    cost_sold=cost_sold,
+                )
+            )
         if share_variables:
             values = overview_revenue_kpi_values(calculation)
             for key, variable in share_variables.items():
