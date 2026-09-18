@@ -45,6 +45,8 @@ jobs:
           python scripts/generate_version_info.py
           pyinstaller --noconfirm --clean WBPriceAnalyzer.spec
           Copy-Item README_WINDOWS.txt "dist/WBPriceAnalyzer/Прочтите_перед_запуском.txt"
+          $version = python -c "from wb_app import __version__; print(__version__)"
+          Copy-Item "docs/WBPriceAnalyzer_Instruction_v$version.pdf" "dist/WBPriceAnalyzer/WBPriceAnalyzer_Instruction_v$version.pdf"
 
       - name: Smoke-test built executable
         shell: pwsh
