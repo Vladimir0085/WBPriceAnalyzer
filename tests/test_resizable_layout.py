@@ -71,6 +71,13 @@ class ResizableLayoutTests(unittest.TestCase):
         self.assertEqual(pane.added[1], (table, {"minsize": 150, "stretch": "always"}))
         self.assertEqual(pane.sash, (0, 0, 280))
 
+    def test_overview_requests_an_equal_adaptive_table_split(self) -> None:
+        source = inspect.getsource(WBPriceAnalyzerApp._build_overview_tab)
+
+        self.assertIn("table_fraction=0.5", source)
+        self.assertIn("CompactKpi.TLabel", source)
+        self.assertIn("Compact.TCombobox", source)
+
     def test_requested_tabs_use_resizable_table_layout(self) -> None:
         for method in (
             WBPriceAnalyzerApp._build_overview_tab,
