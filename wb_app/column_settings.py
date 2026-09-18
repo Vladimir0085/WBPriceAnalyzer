@@ -305,6 +305,7 @@ class ColumnSettingsWBPriceAnalyzerApp(ReportExportsWBPriceAnalyzerApp):
             self.overview_columns_button = ttk.Button(
                 overview_anchor.master,
                 text="Настроить столбцы…",
+                style="Compact.TButton",
                 command=self.open_overview_column_settings,
             )
             self.overview_columns_button.grid(row=0, column=5, padx=(8, 0))

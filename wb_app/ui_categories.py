@@ -61,7 +61,8 @@ class CategoryWBPriceAnalyzerApp(DisplayWBPriceAnalyzerApp):
                 if cc>=col+1:child.grid_configure(column=cc+1)
             except (tk.TclError,TypeError,ValueError):pass
         combo.grid_remove();legacy_var.set(CATEGORY_ALL)
-        ttk.Button(parent,textvariable=self._category_label_vars[key],command=lambda:self._choose_categories(key),width=24).grid(row=row,column=col,padx=(0,8))
+        style="Compact.TButton" if key=="overview" else "TButton"
+        ttk.Button(parent,textvariable=self._category_label_vars[key],command=lambda:self._choose_categories(key),width=24,style=style).grid(row=row,column=col,padx=(0,8))
         ttk.Checkbutton(parent,text="Исключить выбранные",variable=self._category_exclude_vars[key],command=lambda:self._on_category_mode_changed(key)).grid(row=row,column=col+1,sticky="w",padx=(0,12))
     def _available_categories(self,key:str)->list[str]:
         calc=self.overview_calculation if key=="overview" else self.current_calculation
