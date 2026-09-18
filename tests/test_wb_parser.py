@@ -35,7 +35,7 @@ NEW_HEADER_NAMES = {
 
 
 class WBParserTests(unittest.TestCase):
-    def test_detects_week_variant_and_out_of_week_correction(self) -> None:
+    def test_detects_partial_period_and_out_of_week_correction(self) -> None:
         with tempfile.TemporaryDirectory() as temp_name:
             path = Path(temp_name) / "Еженедельный детализированный отчет №123.xlsx"
             workbook = Workbook()
@@ -52,7 +52,7 @@ class WBParserTests(unittest.TestCase):
             self.assertEqual(parsed.report_number, "123")
             self.assertEqual(parsed.report_variant, "по выкупам")
             self.assertEqual(parsed.period_start.isoformat(), "2026-08-03")
-            self.assertEqual(parsed.period_end.isoformat(), "2026-08-09")
+            self.assertEqual(parsed.period_end.isoformat(), "2026-08-04")
             self.assertEqual(parsed.out_of_period_rows, 1)
             self.assertEqual(parsed.unknown_columns, ["Новый денежный столбец"])
             self.assertEqual(parsed.row_count, 3)
@@ -81,6 +81,8 @@ class WBParserTests(unittest.TestCase):
 
             self.assertEqual(parsed.report_number, "789")
             self.assertEqual(parsed.report_variant, "основной")
+            self.assertEqual(parsed.period_start.isoformat(), "2026-09-03")
+            self.assertEqual(parsed.period_end.isoformat(), "2026-09-03")
             self.assertEqual(parsed.unknown_columns, [])
             self.assertEqual(parsed.row_count, 1)
             self.assertEqual(

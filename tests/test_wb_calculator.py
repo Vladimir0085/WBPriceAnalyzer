@@ -131,7 +131,7 @@ class WBCalculatorTests(unittest.TestCase):
         main = ParsedSource(
             path=Path("main.xlsx"), file_hash="main", report_type="WEEKLY_WB",
             sheet_name="Sheet1", header_row=1, report_number="1", report_variant="основной",
-            period_start=date(2026, 8, 3), period_end=date(2026, 8, 9),
+            period_start=date(2026, 8, 4), period_end=date(2026, 8, 8),
             accrual_rows=[
                 operation(2, "Продажа", document="Продажа", quantity=2, retail=2000, realized=1600, payout=1400),
                 operation(3, "Возврат", document="Возврат", quantity=1, retail=1000, realized=800, payout=700),
@@ -156,7 +156,7 @@ class WBCalculatorTests(unittest.TestCase):
         buyout = ParsedSource(
             path=Path("buyout.xlsx"), file_hash="buyout", report_type="WEEKLY_WB",
             sheet_name="Sheet1", header_row=1, report_number="2", report_variant="по выкупам",
-            period_start=date(2026, 8, 3), period_end=date(2026, 8, 9),
+            period_start=date(2026, 8, 5), period_end=date(2026, 8, 7),
             accrual_rows=buyout_rows,
         )
         notice = ParsedSource(
@@ -176,6 +176,8 @@ class WBCalculatorTests(unittest.TestCase):
         )
         result = calculation.products[0]
 
+        self.assertEqual(calculation.period_start, date(2026, 8, 4))
+        self.assertEqual(calculation.period_end, date(2026, 8, 8))
         self.assertEqual(result.main_units_total, 1)
         self.assertEqual(result.buyout_units_total, 3)
         self.assertEqual(result.units, 4)

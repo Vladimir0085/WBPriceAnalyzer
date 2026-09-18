@@ -4,7 +4,7 @@ import re
 import shutil
 import tempfile
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 from .calculator import calculate_run, discover_unknown_products
@@ -56,12 +56,22 @@ class ImportSession:
 
     @property
     def period_start(self) -> date | None:
-        dates = [source.period_start for source in self.sources if source.period_start is not None]
+        period_sources = _weekly_or_all_sources(self.sources)
+        dates = [
+            source.period_start
+            for source in period_sources
+            if source.period_start is not None
+        ]
         return min(dates) if dates else None
 
     @property
     def period_end(self) -> date | None:
-        dates = [source.period_end for source in self.sources if source.period_end is not None]
+        period_sources = _weekly_or_all_sources(self.sources)
+        dates = [
+            source.period_end
+            for source in period_sources
+            if source.period_end is not None
+        ]
         return max(dates) if dates else None
 
     def import_notices(self) -> list[ImportNotice]:
@@ -107,8 +117,10 @@ class ImportSession:
                 )
             )
         periods = {
-            (source.period_start, source.period_end)
+            period
             for source in self.sources
+            if source.report_type == REPORT_WEEKLY
+            if (period := _period_group(source)) is not None
         }
         if len(periods) > 1:
             notices.append(
@@ -409,6 +421,7 @@ class AppService:
                     calculation,
                     stored_paths,
                     replace_run_ids=[old_id],
+                    allow_period_change=True,
                 )
                 self.db.set_run_created_at(new_id, created_at)
                 for article, price in planned_prices.items():
@@ -456,28 +469,46 @@ def _month_list(months: set[tuple[int, int]]) -> str:
 
 
 def split_import_sources(sources: list[ParsedSource]) -> list[ImportSession]:
-    """Combine the main and buyout reports of each ISO week into one run."""
+    """Combine main and buyout reports belonging to the same WB week."""
     weekly_sources = [source for source in sources if source.report_type == REPORT_WEEKLY]
     if not weekly_sources:
         raise ValueError("Для расчета нужен еженедельный детализированный отчет WB")
 
-    grouped: dict[tuple[date, date], list[ParsedSource]] = {}
     for source in weekly_sources:
         if source.period_start is None or source.period_end is None:
             raise ValueError(
-                f"Не удалось определить неделю отчета «{source.path.name}». "
+                f"Не удалось определить период отчета «{source.path.name}». "
                 "Проверьте столбец «Дата продажи»."
             )
-        key = (source.period_start, source.period_end)
-        grouped.setdefault(key, []).append(source)
 
+    grouped_main: dict[tuple[date, date], list[ParsedSource]] = {}
+    for source in weekly_sources:
+        if source.report_variant == "по выкупам":
+            continue
+        key = (source.period_start, source.period_end)
+        grouped_main.setdefault(key, []).append(source)
     sessions = [
         ImportSession(
-            sources=sorted(items, key=lambda item: (item.report_variant, item.path.name.casefold())),
+            sources=sorted(items, key=lambda item: item.path.name.casefold()),
             unknown_products=[],
         )
-        for _period, items in sorted(grouped.items())
+        for _period, items in sorted(grouped_main.items())
     ]
+    buyout_sources = sorted(
+        (
+            source
+            for source in weekly_sources
+            if source.report_variant == "по выкупам"
+        ),
+        key=_source_sort_key,
+    )
+    for buyout in buyout_sources:
+        matching_session = _main_session_for_buyout(sessions, buyout)
+        if matching_session is None:
+            sessions.append(ImportSession(sources=[buyout], unknown_products=[]))
+        else:
+            matching_session.sources.append(buyout)
+
     notices = [source for source in sources if source.report_type == REPORT_BUYOUT_NOTICE]
     for notice in notices:
         matching = [
@@ -493,10 +524,16 @@ def split_import_sources(sources: list[ParsedSource]) -> list[ImportSession]:
         if len(matching) == 1:
             matching[0].sources.append(notice)
             continue
+        notice_group = _period_group(notice)
         same_period = [
             session
             for session in sessions
-            if session.period_start == notice.period_start and session.period_end == notice.period_end
+            if notice_group is not None
+            and any(
+                _period_group(source) == notice_group
+                for source in session.sources
+                if source.report_type == REPORT_WEEKLY
+            )
         ]
         if len(same_period) == 1:
             same_period[0].sources.append(notice)
@@ -511,6 +548,57 @@ def split_import_sources(sources: list[ParsedSource]) -> list[ImportSession]:
         )
     sessions.sort(key=_session_sort_key)
     return sessions
+
+
+def _weekly_or_all_sources(sources: list[ParsedSource]) -> list[ParsedSource]:
+    weekly = [source for source in sources if source.report_type == REPORT_WEEKLY]
+    return weekly or sources
+
+
+def _period_group(source: ParsedSource) -> tuple[date, date] | None:
+    """Return a stable grouping range while preserving the observed period."""
+    if source.period_start is None or source.period_end is None:
+        return None
+    start_week = source.period_start - timedelta(days=source.period_start.weekday())
+    end_week = source.period_end - timedelta(days=source.period_end.weekday())
+    if start_week == end_week:
+        return start_week, start_week + timedelta(days=6)
+    return source.period_start, source.period_end
+
+
+def _main_session_for_buyout(
+    sessions: list[ImportSession],
+    buyout: ParsedSource,
+) -> ImportSession | None:
+    buyout_group = _period_group(buyout)
+    candidates = [
+        session
+        for session in sessions
+        if any(
+            source.report_variant == "основной"
+            and _period_group(source) == buyout_group
+            for source in session.sources
+        )
+    ]
+    if not candidates:
+        return None
+
+    overlapping: list[tuple[int, ImportSession]] = []
+    for session in candidates:
+        if session.period_start is None or session.period_end is None:
+            continue
+        overlap_start = max(session.period_start, buyout.period_start)
+        overlap_end = min(session.period_end, buyout.period_end)
+        if overlap_start <= overlap_end:
+            overlapping.append(((overlap_end - overlap_start).days + 1, session))
+    if overlapping:
+        best_days = max(days for days, _session in overlapping)
+        best = [session for days, session in overlapping if days == best_days]
+        if len(best) == 1:
+            return best[0]
+    if len(candidates) == 1:
+        return candidates[0]
+    return None
 
 
 def _session_month(session: ImportSession) -> tuple[int, int] | None:

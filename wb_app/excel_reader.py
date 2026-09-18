@@ -370,7 +370,7 @@ def _parse_weekly(ws, header_row: int, parsed: ParsedSource) -> None:
     if not parsed.accrual_rows:
         raise ReportFormatError(f"В отчете нет строк операций: {parsed.path.name}")
 
-    parsed.period_start, parsed.period_end = _dominant_iso_week(dates)
+    parsed.period_start, parsed.period_end = _dominant_report_period(dates)
     if parsed.period_start is not None and parsed.period_end is not None:
         parsed.out_of_period_rows = sum(
             1
@@ -441,12 +441,18 @@ def _parse_buyout_notice(ws, header_row: int, parsed: ParsedSource) -> None:
         parsed.period_end = parsed.period_start + timedelta(days=6)
 
 
-def _dominant_iso_week(dates: list[date]) -> tuple[date | None, date | None]:
+def _dominant_report_period(dates: list[date]) -> tuple[date | None, date | None]:
     if not dates:
         return None, None
     week_starts = [value - timedelta(days=value.weekday()) for value in dates]
-    start = Counter(week_starts).most_common(1)[0][0]
-    return start, start + timedelta(days=6)
+    counts = Counter(week_starts)
+    dominant_week = max(counts, key=lambda value: (counts[value], value))
+    period_dates = [
+        value
+        for value, week_start in zip(dates, week_starts)
+        if week_start == dominant_week
+    ]
+    return min(period_dates), max(period_dates)
 
 
 def _report_number(filename: str) -> str:

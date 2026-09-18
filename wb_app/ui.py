@@ -2043,7 +2043,9 @@ class WBPriceAnalyzerApp(tk.Tk):
             "Используются сохраненные копии исходных XLSX. Начисления известных "
             "артикулов будут учтены даже для архивных товаров и товаров без продаж. "
             "Количество продаж будет заново определено по группам «Продажи» и «Возвраты».\n\n"
-            "Наименования отчетов, историческая себестоимость и плановые цены сохранятся. "
+            "Периоды будут уточнены по фактическим датам продажи. Автоматические названия "
+            "обновятся, а измененные вручную названия сохранятся. Историческая себестоимость "
+            "и плановые цены сохранятся. "
             "Перед перерасчетом приложение автоматически создаст резервную копию. "
             "Продолжить?",
             parent=self,
@@ -4170,7 +4172,9 @@ def _parse_number(value: str) -> float:
 
 def _period_text(start: str | None, end: str | None) -> str:
     if start and end:
-        return f"{_date_display(start)}–{_date_display(end)}"
+        start_text = _date_display(start)
+        end_text = _date_display(end)
+        return start_text if start_text == end_text else f"{start_text}–{end_text}"
     return "Период не определен"
 
 
@@ -4197,13 +4201,17 @@ def _file_size(value: int) -> str:
 
 def _calculation_period(calculation: RunCalculation) -> str:
     if calculation.period_start and calculation.period_end:
-        return f"{calculation.period_start:%d.%m.%Y}–{calculation.period_end:%d.%m.%Y}"
+        start = f"{calculation.period_start:%d.%m.%Y}"
+        end = f"{calculation.period_end:%d.%m.%Y}"
+        return start if start == end else f"{start}–{end}"
     return "не определен"
 
 
 def _session_period(session: ImportSession) -> str:
     if session.period_start and session.period_end:
-        return f"{session.period_start:%d.%m.%Y}–{session.period_end:%d.%m.%Y}"
+        start = f"{session.period_start:%d.%m.%Y}"
+        end = f"{session.period_end:%d.%m.%Y}"
+        return start if start == end else f"{start}–{end}"
     return "не определен"
 
 

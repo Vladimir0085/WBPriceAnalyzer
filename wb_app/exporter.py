@@ -95,7 +95,9 @@ def export_calculation(
 
 def suggested_export_name(calculation: RunCalculation) -> str:
     if calculation.period_start and calculation.period_end:
-        period = f"{calculation.period_start:%d.%m.%Y}-{calculation.period_end:%d.%m.%Y}"
+        start = f"{calculation.period_start:%d.%m.%Y}"
+        end = f"{calculation.period_end:%d.%m.%Y}"
+        period = start if start == end else f"{start}-{end}"
     else:
         period = datetime.now().strftime("%d.%m.%Y")
     return f"Отчет_WB_{period}.xlsx"
@@ -112,11 +114,12 @@ def _fill_report_sheet(
     ws["A1"] = "WB Price Analyzer — итоговый отчет"
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(HEADERS))
     ws["A2"] = "Период"
-    ws["B2"] = (
-        f"{calculation.period_start:%d.%m.%Y}–{calculation.period_end:%d.%m.%Y}"
-        if calculation.period_start and calculation.period_end
-        else "Не определен"
-    )
+    if calculation.period_start and calculation.period_end:
+        start = f"{calculation.period_start:%d.%m.%Y}"
+        end = f"{calculation.period_end:%d.%m.%Y}"
+        ws["B2"] = start if start == end else f"{start}–{end}"
+    else:
+        ws["B2"] = "Не определен"
     ws["D2"] = "Налоговая ставка"
     ws["E2"] = calculation.tax_rate
     ws["G2"] = "Нераспределенные доходы / расходы"

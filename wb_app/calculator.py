@@ -371,8 +371,10 @@ def calculate_run(
             f"{_money_ru(amount)}"
         )
 
-    starts = [source.period_start for source in sources if source.period_start]
-    ends = [source.period_end for source in sources if source.period_end]
+    weekly_sources = [source for source in sources if source.report_type == REPORT_WEEKLY]
+    period_sources = weekly_sources or sources
+    starts = [source.period_start for source in period_sources if source.period_start]
+    ends = [source.period_end for source in period_sources if source.period_end]
     warnings = []
     for source in sources:
         if source.out_of_period_rows:

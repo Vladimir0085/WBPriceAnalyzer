@@ -42,14 +42,16 @@ def notice(report_number: str, start: date, end: date) -> ParsedSource:
 
 class WBServiceExportTests(unittest.TestCase):
     def test_groups_main_and_buyout_by_week(self) -> None:
-        first = source("main.xlsx", "основной", date(2026, 8, 3), date(2026, 8, 9))
-        second = source("buyout.xlsx", "по выкупам", date(2026, 8, 3), date(2026, 8, 9))
+        first = source("main.xlsx", "основной", date(2026, 8, 4), date(2026, 8, 8))
+        second = source("buyout.xlsx", "по выкупам", date(2026, 8, 5), date(2026, 8, 7))
         second.report_number = "2"
         buyout_notice = notice("2", date(2026, 8, 3), date(2026, 8, 9))
         next_week = source("next.xlsx", "основной", date(2026, 8, 10), date(2026, 8, 16))
         sessions = split_import_sources([next_week, buyout_notice, second, first])
         self.assertEqual(len(sessions), 2)
         self.assertEqual(len(sessions[0].sources), 3)
+        self.assertEqual(sessions[0].period_start, date(2026, 8, 4))
+        self.assertEqual(sessions[0].period_end, date(2026, 8, 8))
         self.assertTrue(sessions[0].has_realization)
         self.assertTrue(sessions[0].has_buyout_notice)
         self.assertFalse(
@@ -58,6 +60,46 @@ class WBServiceExportTests(unittest.TestCase):
                 for item in sessions[0].import_notices()
             )
         )
+        self.assertFalse(
+            any(
+                item.kind == NOTICE_PERIOD_MISMATCH
+                for item in sessions[0].import_notices()
+            )
+        )
+
+    def test_keeps_separate_partial_main_reports_in_same_week(self) -> None:
+        first_day = source(
+            "first-day.xlsx",
+            "основной",
+            date(2026, 8, 31),
+            date(2026, 8, 31),
+        )
+        later_days = source(
+            "later-days.xlsx",
+            "основной",
+            date(2026, 9, 1),
+            date(2026, 9, 6),
+        )
+        buyout = source(
+            "buyout.xlsx",
+            "по выкупам",
+            date(2026, 9, 3),
+            date(2026, 9, 5),
+        )
+        buyout.report_number = "2"
+        buyout_notice = notice("2", date(2026, 8, 31), date(2026, 9, 6))
+
+        sessions = split_import_sources(
+            [later_days, buyout_notice, first_day, buyout]
+        )
+
+        self.assertEqual(len(sessions), 2)
+        self.assertEqual(sessions[0].period_start, date(2026, 8, 31))
+        self.assertEqual(sessions[0].period_end, date(2026, 8, 31))
+        self.assertEqual(len(sessions[0].sources), 1)
+        self.assertEqual(sessions[1].period_start, date(2026, 9, 1))
+        self.assertEqual(sessions[1].period_end, date(2026, 9, 6))
+        self.assertEqual(len(sessions[1].sources), 3)
 
     def test_buyout_without_notice_is_blocking(self) -> None:
         main = source("main.xlsx", "основной", date(2026, 8, 3), date(2026, 8, 9))
