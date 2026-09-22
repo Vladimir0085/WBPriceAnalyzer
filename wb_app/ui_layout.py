@@ -5,6 +5,7 @@ import tkinter.font as tkfont
 from tkinter import ttk
 from typing import Callable
 from .ui import WBPriceAnalyzerApp
+from .ui_containers import ScrollableSummary, WrappingToolbar
 
 UI_SCALE_LABELS={"Авто (рекомендуется)":"auto","100%":"1.0","90%":"0.9","80%":"0.8"}
 UI_SCALE_VALUES={v:k for k,v in UI_SCALE_LABELS.items()}
@@ -186,22 +187,20 @@ class TableModeController:
     owner:object;key:str;title:str;tab:ttk.Frame;tree:ttk.Treeview;layout:StaticTableLayout;category_key:str|None=None;action_label:str|None=None;action:Callable[[],None]|None=None
     def __post_init__(self)->None:
         self.fullscreen=False;self._detached=None;self.layout.toolbar.columnconfigure(0,weight=1)
-        ttk.Button(self.layout.toolbar,text="⛶ На весь экран",style="TableTool.TButton",command=self.toggle_fullscreen).grid(row=0,column=1,padx=3,pady=2)
-        ttk.Button(self.layout.toolbar,text="↗ Отдельно",style="TableTool.TButton",command=self.open_detached).grid(row=0,column=2,padx=3,pady=2)
-        self.full_toolbar=ttk.Frame(self.tab,style="FloatingTools.TFrame",padding=(6,4))
-        ttk.Button(self.full_toolbar,text="Вернуть обычный вид",style="TableTool.TButton",command=self.toggle_fullscreen).grid(row=0,column=0,padx=2)
-        ttk.Button(self.full_toolbar,text="Открыть отдельно",style="TableTool.TButton",command=self.open_detached).grid(row=0,column=1,padx=2)
+        self.fullscreen_button=ttk.Button(self.layout.toolbar,text="⛶ На весь экран",style="TableTool.TButton",command=self.toggle_fullscreen)
+        self.fullscreen_button.grid(row=1,column=1,padx=3,pady=2)
+        ttk.Button(self.layout.toolbar,text="↗ Отдельно",style="TableTool.TButton",command=self.open_detached).grid(row=1,column=2,padx=3,pady=2)
     def toggle_fullscreen(self)->None:self.restore() if self.fullscreen else self.expand()
     def expand(self)->None:
         if self.fullscreen:return
-        self.owner._restore_other_table_modes(self.key);self.layout.upper.grid_remove();self.layout.toolbar.grid_remove()
-        self.layout.table.grid_configure(row=0,rowspan=3);self.layout.shell.rowconfigure(0,weight=1,minsize=0);self.layout.shell.rowconfigure(1,weight=0,minsize=0);self.layout.shell.rowconfigure(2,weight=0,minsize=0)
-        self.full_toolbar.place(relx=1.0,x=-10,y=8,anchor="ne");self.full_toolbar.lift();self.fullscreen=True
+        self.owner._restore_other_table_modes(self.key);self.layout.upper.grid_remove()
+        # Keep filters and mode buttons in their own row, never over the table.
+        self.layout.shell.rowconfigure(0,weight=0,minsize=0,uniform="");self.layout.shell.rowconfigure(2,weight=1,minsize=110,uniform="")
+        self.fullscreen_button.configure(text="Вернуть обычный вид");self.fullscreen=True
         self.owner.status_var.set(f"{self.title}: таблица развернута. F11 или Esc — вернуть обычный вид.")
     def restore(self)->None:
         if not self.fullscreen:return
-        self.full_toolbar.place_forget();self.layout.table.grid_configure(row=2,rowspan=1);self.layout.upper.grid();self.layout.toolbar.grid()
-        self.layout.shell.rowconfigure(0,weight=0,minsize=self.layout.min_upper);self.layout.shell.rowconfigure(2,weight=1,minsize=110);self.owner._protect_layout(self.layout)
+        self.layout.upper.grid();self.fullscreen_button.configure(text="⛶ На весь экран");self.owner._protect_layout(self.layout)
         self.fullscreen=False;self.owner.status_var.set(self.owner._current_run_status())
     def open_detached(self)->None:
         if self._detached is not None and not self._detached._closed:self._detached.focus();return
@@ -226,16 +225,24 @@ class DisplayWBPriceAnalyzerApp(WBPriceAnalyzerApp):
             table_fraction=max(0.4,min(float(table_fraction),0.7));group=f"split_{id(shell)}";upper_weight=max(1,round((1.0-table_fraction)*100));table_weight=max(1,round(table_fraction*100))
             shell.rowconfigure(0,weight=upper_weight,minsize=0,uniform=group);shell.rowconfigure(2,weight=table_weight,minsize=max(110,min(table_minsize,150)),uniform=group)
         shell.rowconfigure(1,weight=0)
-        upper=ttk.Frame(shell);upper.grid(row=0,column=0,sticky="nsew");upper.columnconfigure(0,weight=1)
-        toolbar=ttk.Frame(shell,padding=(0,2));toolbar.grid(row=1,column=0,sticky="ew");ttk.Separator(toolbar,orient="horizontal").grid(row=0,column=0,sticky="ew",padx=(0,8))
+        upper=ScrollableSummary(shell) if table_fraction is not None else ttk.Frame(shell)
+        upper.grid(row=0,column=0,sticky="nsew");upper.columnconfigure(0,weight=1)
+        toolbar=ttk.Frame(shell,padding=(0,2));toolbar.grid(row=1,column=0,sticky="ew");ttk.Separator(toolbar,orient="horizontal").grid(row=1,column=0,sticky="ew",padx=(0,8))
         table=ttk.Frame(shell);table.grid(row=2,column=0,sticky="nsew");table.columnconfigure(0,weight=1);table.rowconfigure(0,weight=1)
-        layout=StaticTableLayout(tab,shell,upper,toolbar,table,upper_minsize,table_fraction);self._table_layouts[tab]=layout;self.after_idle(lambda:self._protect_layout(layout));return upper,table
+        layout=StaticTableLayout(tab,shell,upper,toolbar,table,upper_minsize,table_fraction);self._table_layouts[tab]=layout;self.after_idle(lambda:self._protect_layout(layout))
+        return (upper.content if isinstance(upper,ScrollableSummary) else upper),table
+    def _create_overview_filters(self,table:ttk.Frame)->WrappingToolbar:
+        layout=self._table_layouts[self.overview_tab]
+        filters=WrappingToolbar(layout.toolbar)
+        filters.grid(row=0,column=0,columnspan=3,sticky="ew",pady=(2,4))
+        return filters
     def _create_tree(self,parent,columns:list[str],headings:list[str],row:int,widths:list[int]|None=None,height:int=18)->ttk.Treeview:
         tree=super()._create_tree(parent,columns,headings,row,widths,height);self.after_idle(lambda:self._ensure_tree(tree));return tree
     def _ensure_tree(self,tree:ttk.Treeview)->None:
         if self._heading_tooltips:self._heading_tooltips.ensure(tree)
     def _protect_layout(self,layout:StaticTableLayout)->None:
         try:
+            if not layout.upper.winfo_manager():return
             if layout.table_fraction is None:
                 layout.shell.rowconfigure(0,minsize=max(layout.min_upper,layout.upper.winfo_reqheight()),weight=0);layout.shell.rowconfigure(2,minsize=110,weight=1)
             else:
