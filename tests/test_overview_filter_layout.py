@@ -209,10 +209,13 @@ class OverviewTkGeometryTests(unittest.TestCase):
         self.assert_filters_visible()
 
     def test_small_window_summary_is_scrollable_independently_of_filters(self) -> None:
-        self.app.geometry("1180x608+0+0")
+        # Force overflow even with the smaller default fonts on Windows CI.
+        # A 608px-high window can fit the compact summary without scrolling.
+        self.app.geometry("1180x420+0+0")
         self.settle()
         summary = self.app._table_layouts[self.app.overview_tab].upper
         self.assertIsInstance(summary, ScrollableSummary)
+        self.assertGreater(summary.content.winfo_reqheight(), summary.canvas.winfo_height())
         self.assertTrue(summary.yscroll.winfo_viewable())
         filters_y = self.app.overview_filters.winfo_rooty()
         summary.canvas.yview_moveto(1)
