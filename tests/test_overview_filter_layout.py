@@ -216,7 +216,16 @@ class OverviewTkGeometryTests(unittest.TestCase):
         summary = self.app._table_layouts[self.app.overview_tab].upper
         self.assertIsInstance(summary, ScrollableSummary)
         self.assertGreater(summary.content.winfo_reqheight(), summary.canvas.winfo_height())
-        self.assertTrue(summary.yscroll.winfo_viewable())
+        self.assertTrue(summary.yscroll.winfo_viewable(), {
+            "root": self.app.winfo_geometry(),
+            "summary": summary.winfo_geometry(),
+            "content": summary.content.winfo_geometry(),
+            "content_request": (summary.content.winfo_reqwidth(), summary.content.winfo_reqheight()),
+            "canvas": summary.canvas.winfo_geometry(),
+            "vertical": (summary.yscroll.winfo_geometry(), summary.yscroll.winfo_manager()),
+            "horizontal": (summary.xscroll.winfo_geometry(), summary.xscroll.winfo_manager()),
+            "view": summary.canvas.yview(),
+        })
         filters_y = self.app.overview_filters.winfo_rooty()
         summary.canvas.yview_moveto(1)
         self.settle()
