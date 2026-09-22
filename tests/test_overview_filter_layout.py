@@ -140,11 +140,22 @@ class OverviewTkGeometryTests(unittest.TestCase):
         )
         callback_patch.start()
         self.addCleanup(callback_patch.stop)
-        self.app = ReportTotalsWBPriceAnalyzerApp(
-            AppService(Path(self.directory.name))
-        )
+        initialize_tk = tk.Tk.__init__
+
+        def initialize_at_test_dpi(root, *args, **kwargs):
+            initialize_tk(root, *args, **kwargs)
+            # Set DPI before constructing fonts/widgets. A previous test can
+            # leave Tk's display scaling at 200% even after its root is closed.
+            root.tk.call("tk", "scaling", 96 / 72)
+
+        with patch("tkinter.Tk.__init__", initialize_at_test_dpi):
+            self.app = ReportTotalsWBPriceAnalyzerApp(
+                AppService(Path(self.directory.name))
+            )
         self.addCleanup(self.app.destroy)
         self.app.minsize(1, 1)
+        # Exercise the requested client sizes even on a small CI desktop.
+        self.app.maxsize(2200, 1400)
         # Test fixed DPI values rather than multiplying the runner's own DPI.
         self.app._base_tk_scaling = 96 / 72
 
@@ -209,9 +220,7 @@ class OverviewTkGeometryTests(unittest.TestCase):
         self.assert_filters_visible()
 
     def test_small_window_summary_is_scrollable_independently_of_filters(self) -> None:
-        # Force overflow even with the smaller default fonts on Windows CI.
-        # A 608px-high window can fit the compact summary without scrolling.
-        self.app.geometry("1180x420+0+0")
+        self.app.geometry("1180x608+0+0")
         self.settle()
         summary = self.app._table_layouts[self.app.overview_tab].upper
         self.assertIsInstance(summary, ScrollableSummary)
