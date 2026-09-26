@@ -4,7 +4,18 @@ import tkinter as tk
 from tkinter import ttk
 
 from .column_settings import ColumnSettingsWBPriceAnalyzerApp
+from .help_content import (
+    CATEGORY_CARD_HELP,
+    OVERVIEW_CARD_HELP,
+    REVENUE_SHARE_CARD_HELP,
+    card_tooltip_text,
+)
 from .ui import _money, _percent, _profitability_text
+from .widget_tooltips import HoverTooltip
+
+
+# In WB the loyalty programme fee and withheld points are an expense.
+POINTS_CARD_TITLE = "Лояльность и баллы (расход)"
 
 
 def report_total_value(calculation) -> float:
@@ -35,6 +46,7 @@ class ReportTotalsWBPriceAnalyzerApp(ColumnSettingsWBPriceAnalyzerApp):
         super().__init__(*args, **kwargs)
         self._install_report_total_kpi()
         self._install_revenue_share_kpis()
+        self._install_overview_card_tooltips()
         self._refresh_report_kpis()
 
     def _install_report_total_kpi(self) -> None:
@@ -54,6 +66,8 @@ class ReportTotalsWBPriceAnalyzerApp(ColumnSettingsWBPriceAnalyzerApp):
         )
         card = ttk.Frame(self.kpi_frame, style="Card.TFrame", padding=(8, 5))
         card.grid(row=1, column=6, sticky="nsew", padx=(5, 0))
+        if hasattr(self, "kpi_cards"):
+            self.kpi_cards["report_total"] = card
         ttk.Label(
             card,
             text="Чистая прибыль от деятельности",
@@ -92,10 +106,11 @@ class ReportTotalsWBPriceAnalyzerApp(ColumnSettingsWBPriceAnalyzerApp):
             share_frame.columnconfigure(column, weight=1)
 
         self.revenue_share_kpi_vars: dict[str, tk.StringVar] = {}
+        self.revenue_share_kpi_cards: dict[str, ttk.Frame] = {}
         cards = (
             ("commission", "Комиссия WB"),
             ("logistics", "Логистика"),
-            ("points", "Баллы"),
+            ("points", POINTS_CARD_TITLE),
             ("net_margin", "Чистая прибыль, %"),
         )
         for index, (key, title) in enumerate(cards):
@@ -103,6 +118,7 @@ class ReportTotalsWBPriceAnalyzerApp(ColumnSettingsWBPriceAnalyzerApp):
             self.revenue_share_kpi_vars[key] = variable
             card = ttk.Frame(share_frame, style="Card.TFrame", padding=(8, 5))
             card.columnconfigure(1, weight=1)
+            self.revenue_share_kpi_cards[key] = card
             card.grid(
                 row=0,
                 column=index,
@@ -115,6 +131,21 @@ class ReportTotalsWBPriceAnalyzerApp(ColumnSettingsWBPriceAnalyzerApp):
             ttk.Label(card, textvariable=variable, style="CompactKpi.TLabel").grid(
                 row=0, column=1, sticky="e", padx=(8, 0)
             )
+
+    def _install_overview_card_tooltips(self) -> None:
+        """Show the formula from «Справка» when hovering over any Overview card."""
+        self.overview_card_tooltips: dict[str, HoverTooltip] = {}
+        groups = (
+            ("", getattr(self, "kpi_cards", {}), OVERVIEW_CARD_HELP),
+            ("share:", getattr(self, "revenue_share_kpi_cards", {}), REVENUE_SHARE_CARD_HELP),
+            ("category:", getattr(self, "category_kpi_cards", {}), CATEGORY_CARD_HELP),
+        )
+        for prefix, cards, card_help in groups:
+            for key, card in cards.items():
+                if key in card_help:
+                    self.overview_card_tooltips[prefix + key] = HoverTooltip(
+                        card, card_tooltip_text(card_help[key])
+                    )
 
     def _populate_overview(self) -> None:
         super()._populate_overview()

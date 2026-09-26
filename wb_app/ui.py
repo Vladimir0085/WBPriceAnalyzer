@@ -24,7 +24,7 @@ from .costs import (
     read_cost_catalog,
 )
 from .config import APP_TITLE, APP_VERSION, save_storage_location
-from .database import Database
+from .database import Database, _default_run_name
 from .excel_reader import preview_sheet, workbook_sheet_names
 from .exporter import export_calculation, export_run, suggested_export_name
 from .help_content import OVERVIEW_HELP_CONTENT, REPORTS_HELP_CONTENT, HelpContent
@@ -44,6 +44,7 @@ from .storage import migrate_storage
 from .theme import apply_theme
 from .trends import TrendPoint, build_trend_points, chart_bounds
 from .ui_containers import WrappingToolbar
+from .widget_tooltips import HoverTooltip
 
 
 THEME_LABELS = {"Системная": "system", "Темная": "dark", "Светлая": "light"}
@@ -166,6 +167,8 @@ class WBPriceAnalyzerApp(tk.Tk):
         self.overview_runs: list[RunSummary] = []
         self.overview_file_count = 0
         self.run_display_to_id: dict[str, int] = {}
+        self.run_header_display_by_id: dict[int, str] = {}
+        self.run_summary_by_id: dict[int, RunSummary] = {}
         self.run_number_by_id: dict[int, int] = {}
         self.history_number_by_id: dict[int, int] = {}
         self.history_year_filter: set[int] | None = None
@@ -261,9 +264,10 @@ class WBPriceAnalyzerApp(tk.Tk):
         report_group = actions.add_group()
         ttk.Label(report_group, text="Отчет:", style="Muted.TLabel").grid(row=0, column=0, padx=(0, 6))
         self.run_var = tk.StringVar()
-        self.run_combo = ttk.Combobox(report_group, textvariable=self.run_var, state="readonly", width=30)
+        self.run_combo = ttk.Combobox(report_group, textvariable=self.run_var, state="readonly", width=26)
         self.run_combo.grid(row=0, column=1)
         self.run_combo.bind("<<ComboboxSelected>>", self._on_run_selected)
+        self.run_combo_tooltip = HoverTooltip(self.run_combo, self._run_combo_tooltip_text)
         for text, style, command in (
             ("Импортировать отчеты", "Accent.TButton", self.import_reports),
             ("Экспорт в Excel", "TButton", self.export_current_run),
@@ -313,6 +317,7 @@ class WBPriceAnalyzerApp(tk.Tk):
             row=0, column=0, columnspan=6, sticky="w", pady=(0, 2)
         )
         self.kpi_vars: dict[str, tk.StringVar] = {}
+        self.kpi_cards: dict[str, ttk.Frame] = {}
         cards = [
             ("revenue", "Выручка"),
             ("net_profit", "Чистая прибыль товаров"),
@@ -325,6 +330,7 @@ class WBPriceAnalyzerApp(tk.Tk):
             self.kpi_vars[key] = tk.StringVar(value="—")
             card = ttk.Frame(self.kpi_frame, style="Card.TFrame", padding=(8, 5))
             card.grid(row=1, column=index, sticky="nsew", padx=(0 if index == 0 else 5, 0 if index == 5 else 5))
+            self.kpi_cards[key] = card
             ttk.Label(card, text=title, style="CompactCardMuted.TLabel").grid(row=0, column=0, sticky="w")
             ttk.Label(card, textvariable=self.kpi_vars[key], style="CompactKpi.TLabel").grid(
                 row=1, column=0, sticky="w", pady=(1, 0)
@@ -346,6 +352,7 @@ class WBPriceAnalyzerApp(tk.Tk):
         ).grid(row=0, column=1, sticky="e")
 
         self.category_kpi_vars: dict[str, tk.StringVar] = {}
+        self.category_kpi_cards: dict[str, ttk.Frame] = {}
         category_cards = [
             ("revenue", "Выручка"),
             ("net_profit", "Чистая прибыль"),
@@ -363,6 +370,7 @@ class WBPriceAnalyzerApp(tk.Tk):
                 sticky="nsew",
                 padx=(0 if index == 0 else 5, 0 if index == 5 else 5),
             )
+            self.category_kpi_cards[key] = card
             ttk.Label(card, text=title, style="CompactCardMuted.TLabel").grid(row=0, column=0, sticky="w")
             ttk.Label(card, textvariable=self.category_kpi_vars[key], style="CompactKpi.TLabel").grid(
                 row=1, column=0, sticky="w", pady=(1, 0)
@@ -556,62 +564,82 @@ class WBPriceAnalyzerApp(tk.Tk):
             style="Muted.TLabel",
         ).grid(row=1, column=0, sticky="w", pady=(0, 10))
 
-        scenario_top = ttk.Frame(scenario_upper)
+        # Both control rows wrap whole groups at the real window width and DPI,
+        # so buttons, the sort direction and «Сбросить» are never clipped (as in OZ).
+        scenario_top = WrappingToolbar(scenario_upper)
         scenario_top.grid(row=2, column=0, sticky="ew", pady=(0, 10))
-        scenario_top.columnconfigure(6, weight=1)
-        ttk.Label(scenario_top, text="Плановая цена выбранного товара:").grid(row=0, column=0, padx=(0, 6))
+        self.scenario_price_controls = scenario_top
+        price_group = scenario_top.add_group()
+        ttk.Label(price_group, text="Плановая цена выбранного товара:").grid(row=0, column=0, padx=(0, 6))
         self.planned_price_var = tk.StringVar()
-        ttk.Entry(scenario_top, textvariable=self.planned_price_var, width=16).grid(row=0, column=1, padx=(0, 6))
-        ttk.Button(scenario_top, text="Применить", command=self.apply_planned_price).grid(row=0, column=2, padx=(0, 18))
-        ttk.Label(scenario_top, text="Изменить цену на, %:").grid(row=0, column=3, padx=(0, 6))
+        ttk.Entry(price_group, textvariable=self.planned_price_var, width=16).grid(row=0, column=1, padx=(0, 6))
+        ttk.Button(price_group, text="Применить", command=self.apply_planned_price).grid(row=0, column=2, padx=(0, 10))
+        percent_group = scenario_top.add_group()
+        ttk.Label(percent_group, text="Изменить цену на, %:").grid(row=0, column=0, padx=(0, 6))
         self.batch_percent_var = tk.StringVar(value="5")
-        ttk.Entry(scenario_top, textvariable=self.batch_percent_var, width=10).grid(row=0, column=4, padx=(0, 6))
+        ttk.Entry(percent_group, textvariable=self.batch_percent_var, width=10).grid(row=0, column=1, padx=(0, 6))
         ttk.Button(
-            scenario_top,
+            percent_group,
             text="Применить к выбранному",
             command=self.apply_selected_percent,
-        ).grid(row=0, column=5, sticky="w", padx=(0, 6))
-        ttk.Button(scenario_top, text="Применить ко всем", command=self.apply_batch_percent).grid(
-            row=0, column=6, sticky="w"
+        ).grid(row=0, column=2, padx=(0, 6))
+        ttk.Button(percent_group, text="Применить ко всем", command=self.apply_batch_percent).grid(
+            row=0, column=3
         )
-        ttk.Button(scenario_top, text="Сбросить цены", command=self.reset_scenario).grid(row=0, column=7, padx=(12, 0))
+        reset_prices_group = scenario_top.add_group()
+        ttk.Button(reset_prices_group, text="Сбросить цены", command=self.reset_scenario).grid(
+            row=0, column=0, padx=(4, 0)
+        )
 
         filters = ttk.Frame(scenario_upper)
         filters.grid(row=3, column=0, sticky="ew", pady=(0, 10))
-        filters.columnconfigure(10, weight=1)
-        ttk.Label(filters, text="Категория:").grid(row=0, column=0, padx=(0, 6))
+        filters.columnconfigure(0, weight=1)
+        self.scenario_filter_container = filters
+        scenario_filters = WrappingToolbar(filters)
+        scenario_filters.grid(row=0, column=0, columnspan=2, sticky="ew")
+        self.scenario_filters = scenario_filters
+        category_group = scenario_filters.add_group()
+        ttk.Label(category_group, text="Категория:").grid(row=0, column=0, padx=(0, 6))
         self.scenario_category_var = tk.StringVar(value=CATEGORY_ALL)
         self.scenario_category_combo = ttk.Combobox(
-            filters, textvariable=self.scenario_category_var, state="readonly", width=24
+            category_group, textvariable=self.scenario_category_var, state="readonly", width=24
         )
-        self.scenario_category_combo.grid(row=0, column=1, padx=(0, 14))
+        self.scenario_category_combo.grid(row=0, column=1, padx=(0, 6))
         self.scenario_category_combo.bind("<<ComboboxSelected>>", lambda _event: self._populate_scenario())
-        ttk.Label(filters, text="Артикул:").grid(row=0, column=2, padx=(0, 6))
+        article_group = scenario_filters.add_group()
+        ttk.Label(article_group, text="Артикул:").grid(row=0, column=0, padx=(0, 6))
         self.scenario_article_var = tk.StringVar()
-        scenario_search = ttk.Entry(filters, textvariable=self.scenario_article_var, width=20)
-        scenario_search.grid(row=0, column=3, padx=(0, 14))
+        scenario_search = ttk.Entry(article_group, textvariable=self.scenario_article_var, width=20)
+        scenario_search.grid(row=0, column=1, padx=(0, 6))
         scenario_search.bind("<KeyRelease>", lambda _event: self._populate_scenario())
-        ttk.Label(filters, text="Сортировать:").grid(row=0, column=4, padx=(0, 6))
+        sort_group = scenario_filters.add_group()
+        ttk.Label(sort_group, text="Сортировать:").grid(row=0, column=0, padx=(0, 6))
         self.scenario_sort_var = tk.StringVar(value=SORT_NONE)
         scenario_sort = ttk.Combobox(
-            filters, textvariable=self.scenario_sort_var, values=SORT_METRICS, state="readonly", width=21
+            sort_group, textvariable=self.scenario_sort_var, values=SORT_METRICS, state="readonly", width=21
         )
-        scenario_sort.grid(row=0, column=5, padx=(0, 8))
+        scenario_sort.grid(row=0, column=1)
         scenario_sort.bind("<<ComboboxSelected>>", lambda _event: self._populate_scenario())
         self.scenario_sort_direction_var = tk.StringVar(value=SORT_ASCENDING)
-        scenario_direction = ttk.Combobox(
-            filters,
+        direction_group = scenario_filters.add_group()
+        self.scenario_direction_combo = ttk.Combobox(
+            direction_group,
             textvariable=self.scenario_sort_direction_var,
             values=(SORT_ASCENDING, SORT_DESCENDING),
             state="readonly",
             width=24,
         )
-        scenario_direction.grid(row=0, column=6, padx=(0, 8))
-        scenario_direction.bind("<<ComboboxSelected>>", lambda _event: self._populate_scenario())
-        ttk.Button(filters, text="Сбросить", command=self._reset_scenario_filters).grid(row=0, column=7)
+        self.scenario_direction_combo.grid(row=0, column=0)
+        self.scenario_direction_combo.bind("<<ComboboxSelected>>", lambda _event: self._populate_scenario())
+        reset_group = scenario_filters.add_group()
+        self.scenario_reset_button = ttk.Button(
+            reset_group, text="Сбросить", command=self._reset_scenario_filters
+        )
+        self.scenario_reset_button.grid(row=0, column=0)
         self.scenario_count_var = tk.StringVar()
-        ttk.Label(filters, textvariable=self.scenario_count_var, style="Muted.TLabel").grid(
-            row=0, column=10, sticky="e"
+        count_group = scenario_filters.add_group()
+        ttk.Label(count_group, textvariable=self.scenario_count_var, style="Muted.TLabel").grid(
+            row=0, column=0, padx=(4, 0)
         )
 
         self.scenario_tree = self._create_tree(
@@ -1198,14 +1226,22 @@ class WBPriceAnalyzerApp(tk.Tk):
         if self.overview_selection_explicit and not self.overview_run_ids:
             self.overview_selection_explicit = False
         self.run_display_to_id.clear()
+        self.run_header_display_by_id = {}
+        self.run_summary_by_id = {run.id: run for run in runs}
         self.run_number_by_id = _run_positions(runs)
         values: list[str] = []
+        header_values: list[str] = []
         for run in runs:
-            period = _period_text(run.period_start, run.period_end)
-            display = f"№{self.run_number_by_id[run.id]} · {run.report_name} · {period}"
+            number = self.run_number_by_id[run.id]
+            display = run_full_display(number, run)
+            # The header list is compact; the full name is shown in its tooltip.
+            short_display = run_header_display(number, run)
             values.append(display)
+            header_values.append(short_display)
             self.run_display_to_id[display] = run.id
-        self.run_combo["values"] = values
+            self.run_display_to_id[short_display] = run.id
+            self.run_header_display_by_id[run.id] = short_display
+        self.run_combo["values"] = header_values
         self.compare_first_combo["values"] = values
         self.compare_second_combo["values"] = values
         if not runs:
@@ -1213,8 +1249,7 @@ class WBPriceAnalyzerApp(tk.Tk):
             self._clear_current_view()
         else:
             target_id = self.current_run_id if self.current_run_id in {run.id for run in runs} else runs[-1].id
-            display = next(key for key, value in self.run_display_to_id.items() if value == target_id)
-            self.run_var.set(display)
+            self.run_var.set(self.run_header_display_by_id[target_id])
             self.select_run(target_id)
             if len(values) >= 2:
                 if self.compare_first_var.get() not in values:
@@ -1241,6 +1276,13 @@ class WBPriceAnalyzerApp(tk.Tk):
         if self.overview_selection_explicit:
             status += f" · в обзоре отчетов: {len(self.overview_run_ids)}"
         self.status_var.set(status)
+
+    def _run_combo_tooltip_text(self) -> str:
+        run_id = self.run_display_to_id.get(self.run_var.get())
+        run = self.run_summary_by_id.get(run_id) if run_id is not None else None
+        if run is None:
+            return ""
+        return run_tooltip_text(self.run_number_by_id.get(run.id, 0), run)
 
     def _on_run_selected(self, _event=None) -> None:
         run_id = self.run_display_to_id.get(self.run_var.get())
@@ -2077,7 +2119,9 @@ class WBPriceAnalyzerApp(tk.Tk):
         if not selection:
             return
         run_id = int(selection[0])
-        display = next((key for key, value in self.run_display_to_id.items() if value == run_id), None)
+        display = self.__dict__.get("run_header_display_by_id", {}).get(run_id) or next(
+            (key for key, value in self.run_display_to_id.items() if value == run_id), None
+        )
         if display:
             self.run_var.set(display)
         self.overview_selection_explicit = False
@@ -4311,10 +4355,18 @@ def _set_category_choices(combo: ttk.Combobox, variable: tk.StringVar, categorie
         variable.set(CATEGORY_ALL)
 
 
+def _display_zero(value: float, digits: int = 2) -> float:
+    """Drop the minus sign of a value that is shown as zero («-0.00» → «0.00»).
+
+    Display only: the calculated number itself is never changed.
+    """
+    return 0.0 if round(value, digits) == 0 else value
+
+
 def _money(value: float | None) -> str:
     if value is None:
         return "—"
-    return f"{value:,.2f} ₽".replace(",", " ")
+    return f"{_display_zero(value):,.2f} ₽".replace(",", " ")
 
 
 def _signed_money(value: float) -> str:
@@ -4326,11 +4378,11 @@ def _signed_number(value: float) -> str:
 
 
 def _number(value: float) -> str:
-    return f"{value:,.2f}".replace(",", " ").rstrip("0").rstrip(".")
+    return f"{_display_zero(value):,.2f}".replace(",", " ").rstrip("0").rstrip(".")
 
 
 def _percent(value: float) -> str:
-    return f"{value * 100:,.2f}%".replace(",", " ")
+    return f"{_display_zero(value * 100):,.2f}%".replace(",", " ")
 
 
 def _profitability_text(value: float | None, *, units: float, cost_sold: float) -> str:
@@ -4343,7 +4395,7 @@ def _profitability_text(value: float | None, *, units: float, cost_sold: float) 
 
 def _signed_percentage_points(value: float) -> str:
     prefix = "+" if value > 0 else ""
-    return f"{prefix}{value * 100:,.2f} п.п.".replace(",", " ")
+    return f"{prefix}{_display_zero(value * 100):,.2f} п.п.".replace(",", " ")
 
 
 def _comparison_percent(metric: ComparisonMetric) -> str:
@@ -4415,6 +4467,46 @@ def _period_text(start: str | None, end: str | None) -> str:
 def _date_display(value: str) -> str:
     parts = value[:10].split("-")
     return ".".join(reversed(parts)) if len(parts) == 3 else value
+
+
+def _compact_period_text(start: str | None, end: str | None) -> str:
+    """Period without a repeated year: 14.09–20.09.2026 (as in OZ 0.5.31)."""
+    if not (start and end):
+        return "Период не определен"
+    first, last = _date_display(start), _date_display(end)
+    if first == last:
+        return last
+    if start[:4] == end[:4] and len(first) == 10:
+        return f"{first[:5]}–{last}"
+    return f"{first}–{last}"
+
+
+def report_name_is_custom(run: RunSummary) -> bool:
+    """True when the user renamed the report instead of keeping the period name."""
+    name = " ".join(str(run.report_name or "").split())
+    if not name:
+        return False
+    generated = {
+        _default_run_name(run.id, run.period_start, run.period_end),
+        f"Отчет Wildberries #{run.id}",
+    }
+    return name not in generated
+
+
+def run_full_display(number: int, run: RunSummary) -> str:
+    return f"№{number} · {run.report_name} · {_period_text(run.period_start, run.period_end)}"
+
+
+def run_header_display(number: int, run: RunSummary) -> str:
+    """Compact header label: «№4 · 14.09–20.09.2026» or the name given by the user."""
+    if report_name_is_custom(run):
+        return f"№{number} · {' '.join(str(run.report_name).split())}"
+    return f"№{number} · {_compact_period_text(run.period_start, run.period_end)}"
+
+
+def run_tooltip_text(number: int, run: RunSummary) -> str:
+    name = str(run.report_name or "").strip() or "Отчет без наименования"
+    return f"Отчет №{number}: {name}\nПериод: {_period_text(run.period_start, run.period_end)}"
 
 
 def _backup_timestamp(value: str) -> str:
