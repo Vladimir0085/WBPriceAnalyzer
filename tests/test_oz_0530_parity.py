@@ -341,25 +341,44 @@ class CatalogAndWindowParityTests(_TkAppTestCase):
         self.settle()
         self.assertTrue(self.app.header_subtitle.winfo_ismapped())
 
-    def test_header_buttons_share_a_row_and_wrap_without_clipping(self) -> None:
-        groups = self.app.header_actions.groups
+    def test_header_buttons_are_not_clipped(self) -> None:
+        toolbar = self.app.header_actions
+        groups = toolbar.groups
         about = groups[-1].winfo_children()[0]
         self.assertEqual(str(about.cget("text")), "О программе")
-        for size, one_row in (("1540x920", True), ("1280x720", False)):
+        # One row or a wrap depends on the font (Segoe UI on Windows, DejaVu on
+        # Linux), so both are valid; only clipping and overflow are errors.
+        for size in ("1540x920", "1280x720"):
             with self.subTest(size=size):
                 self.app.geometry(f"{size}+0+0")
                 self.settle()
-                rows = {group.winfo_y() for group in groups}
-                self.assertEqual(len(rows) == 1, one_row, rows)
-                right = self.app.winfo_rootx() + self.app.winfo_width()
+                left = self.app.winfo_rootx()
+                right = left + self.app.winfo_width()
+                bottom = self.app.winfo_rooty() + self.app.winfo_height()
+                title_right = (
+                    self.app.header_subtitle.winfo_rootx() + self.app.header_subtitle.winfo_width()
+                )
                 for group in groups:
                     self.assertTrue(group.winfo_ismapped())
-                    self.assertGreaterEqual(group.winfo_rootx(), self.app.winfo_rootx())
+                    self.assertGreaterEqual(group.winfo_x(), 0)
+                    self.assertGreaterEqual(group.winfo_y(), 0)
+                    self.assertLessEqual(group.winfo_x() + group.winfo_width(), toolbar.winfo_width())
+                    self.assertLessEqual(group.winfo_y() + group.winfo_height(), toolbar.winfo_height())
+                    self.assertGreaterEqual(group.winfo_rootx(), max(left, title_right))
                     self.assertLessEqual(group.winfo_rootx() + group.winfo_width(), right)
-                    self.assertGreaterEqual(
-                        group.winfo_rootx(),
-                        self.app.header_subtitle.winfo_rootx() + self.app.header_subtitle.winfo_width(),
-                    )
+                    self.assertLessEqual(group.winfo_rooty() + group.winfo_height(), bottom)
+                    for control in group.winfo_children():
+                        self.assertEqual(control.winfo_width(), control.winfo_reqwidth())
+                        self.assertEqual(control.winfo_height(), control.winfo_reqheight())
+                for index, first in enumerate(groups):
+                    for second in groups[index + 1:]:
+                        self.assertTrue(
+                            first.winfo_x() + first.winfo_width() <= second.winfo_x()
+                            or second.winfo_x() + second.winfo_width() <= first.winfo_x()
+                            or first.winfo_y() + first.winfo_height() <= second.winfo_y()
+                            or second.winfo_y() + second.winfo_height() <= first.winfo_y(),
+                            (size, first.winfo_geometry(), second.winfo_geometry()),
+                        )
 
 
 if __name__ == "__main__":
