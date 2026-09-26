@@ -4,6 +4,62 @@ from __future__ import annotations
 HelpContent = tuple[tuple[str, str], ...]
 
 
+# Formulas shared by the «Справка» tab and the tooltips of the Overview cards,
+# so a card always shows exactly the formula printed in the help (as in OZ 0.5.31).
+FORMULA_REVENUE = "Выручка = Выручка MAIN + Выручка BUYOUT"
+FORMULA_NET_PROFIT = "Чистая прибыль товаров = Финрезультат товаров − С/с проданного − Налог"
+FORMULA_PROFITABILITY = "Доходность товаров = Чистая прибыль товаров ÷ С/с проданного × 100%"
+FORMULA_UNITS = "Продажи, шт. = продажи MAIN − возвраты MAIN + количество BUYOUT"
+FORMULA_UNALLOCATED = (
+    "Нераспределённые = Σ финансового результата строк детализированных отчётов без артикула"
+)
+FORMULA_FILES = "Исходные файлы = число уникальных XLSX в выбранных отчётах"
+FORMULA_TAX = "Налог товара = (Выручка MAIN + Выручка BUYOUT) × ставка из «Настроек»"
+FORMULA_ACTIVITY_PROFIT = (
+    "Чистая прибыль от деятельности = Чистая прибыль товаров + Нераспределённые доходы и расходы"
+)
+FORMULA_ACTIVITY_PROFITABILITY = (
+    "Доходность деятельности = Чистая прибыль от деятельности ÷ С/с проданного × 100%"
+)
+FORMULA_COMMISSION_SHARE = (
+    "Комиссия WB, % = комиссия нетто со знаком расхода ÷ Общая выручка × 100%"
+)
+FORMULA_LOGISTICS_SHARE = "Логистика, % = логистика со знаком расхода ÷ Общая выручка × 100%"
+FORMULA_POINTS_SHARE = (
+    "Лояльность и баллы (расход), % = расходы программы лояльности и баллов ÷ "
+    "Общая выручка × 100%"
+)
+FORMULA_NET_MARGIN = (
+    "Чистая прибыль, % от выручки = Чистая прибыль от деятельности ÷ Общая выручка × 100%"
+)
+FORMULA_COST_SOLD = (
+    "С/с проданного = (Материал + Трудозатраты на единицу) × Продажи, шт."
+)
+FORMULA_FINANCIAL_RESULT = "Финрезультат Wildberries = Результат MAIN + Результат BUYOUT"
+FORMULA_CATEGORY_PROFITABILITY = (
+    "Доходность по фильтру = Чистая прибыль товаров фильтра ÷ С/с проданного "
+    "товаров фильтра × 100%"
+)
+
+PROFITABILITY_LABELS_NOTE = (
+    "«Нет продаж» — продаж нет (0 шт. или меньше, например только возврат); "
+    "«Нет себестоимости» — продажи есть, но себестоимость проданного равна нулю."
+)
+NO_UNALLOCATED_TAX_NOTE = (
+    "Налог с нераспределённых операций не начисляется: налоговая база — только "
+    "Выручка MAIN + Выручка BUYOUT."
+)
+COMMISSION_REFERENCE_NOTE = (
+    "Справочно: комиссия WB уже учтена в сумме «К перечислению продавцу» и не "
+    "вычитается из финрезультата повторно."
+)
+LOYALTY_EXPENSE_NOTE = (
+    "В WB это расход программы лояльности: стоимость участия и удержанные баллы. "
+    "Он уменьшает результат MAIN; компенсация скидки показывается отдельно и "
+    "повторно не прибавляется."
+)
+
+
 REPORTS_HELP_CONTENT: HelpContent = (
     ("title", "Какие документы Wildberries загружать"),
     (
@@ -149,6 +205,12 @@ OVERVIEW_HELP_CONTENT: HelpContent = (
     ),
     (
         "body",
+        "В верхнем списке отчёт показан кратко: «№4 · 14.09–20.09.2026», а переименованный "
+        "вручную — своим именем, например «№4 · Неделя 38 — проверено». Полное название "
+        "и период появляются во всплывающей подсказке при наведении на список.",
+    ),
+    (
+        "body",
         "Одинаковый активный набор используют вкладки «Обзор», «Исходные файлы», "
         "«Разбивка» и «Сценарий цены». Для нескольких отчётов сценарий показывает "
         "сводные показатели; изменять и сохранять плановые цены можно при выборе одного отчёта.",
@@ -173,14 +235,17 @@ OVERVIEW_HELP_CONTENT: HelpContent = (
         "• Количество продаж = продажи MAIN − возвраты MAIN + количество BUYOUT. "
         "Возврат конечного покупателя после состоявшегося выкупа не отменяет BUYOUT.",
     ),
+    ("formula", FORMULA_COST_SOLD),
     (
         "bullet",
         "• С/с проданного = (материал + трудозатраты на единицу) × количество продаж. "
         "Для объединённого обзора используется историческая себестоимость каждого отчёта.",
     ),
+    ("formula", FORMULA_TAX),
     (
         "bullet",
-        "• Налог товара = Общая выручка товара × ставка из «Настроек».",
+        "• Налог товара = Общая выручка товара × ставка из «Настроек». "
+        + NO_UNALLOCATED_TAX_NOTE,
     ),
     ("heading", "Финансовый результат Wildberries"),
     (
@@ -207,30 +272,32 @@ OVERVIEW_HELP_CONTENT: HelpContent = (
         "Связанные комиссия и логистика отчёта по выкупам остаются аналитическими, если "
         "они уже учтены WB в договорной цене уведомления.",
     ),
+    ("formula", FORMULA_FINANCIAL_RESULT),
     ("heading", "Основные карточки отчёта"),
-    ("formula", "Выручка = Выручка MAIN + Выручка BUYOUT"),
+    (
+        "note",
+        "Наведите указатель на любую карточку «Обзора» — во всплывающей подсказке появится "
+        "её формула из этой справки.",
+    ),
+    ("formula", FORMULA_REVENUE),
     (
         "body",
         "Показывает товарную выручку по всем товарам. Нераспределённые операции сюда "
         "не входят.",
     ),
-    (
-        "formula",
-        "Чистая прибыль товаров = Финрезультат товаров − С/с проданного − Налог",
-    ),
+    ("formula", FORMULA_NET_PROFIT),
     (
         "body",
         "Карточка «Чистая прибыль товаров» и соседняя товарная «Доходность» не включают "
         "общие операции без артикула.",
     ),
-    (
-        "formula",
-        "Доходность товаров = Чистая прибыль товаров ÷ С/с проданного × 100%",
-    ),
+    ("formula", FORMULA_PROFITABILITY),
+    ("body", PROFITABILITY_LABELS_NOTE),
     (
         "subheading",
         "Продажи, шт.",
     ),
+    ("formula", FORMULA_UNITS),
     (
         "body",
         "Общее количество MAIN и BUYOUT с учётом возвратов основного канала.",
@@ -239,6 +306,7 @@ OVERVIEW_HELP_CONTENT: HelpContent = (
         "subheading",
         "Нераспределённые",
     ),
+    ("formula", FORMULA_UNALLOCATED),
     (
         "body",
         "Сумма финансового результата всех строк детализированных отчётов без артикула. "
@@ -248,19 +316,14 @@ OVERVIEW_HELP_CONTENT: HelpContent = (
         "subheading",
         "Исходные файлы",
     ),
+    ("formula", FORMULA_FILES),
     (
         "body",
         "Количество уникальных XLSX, включённых в текущий или объединённый обзор.",
     ),
     ("heading", "Чистая прибыль от деятельности"),
-    (
-        "formula",
-        "Чистая прибыль от деятельности = Чистая прибыль товаров + Нераспределённые доходы и расходы",
-    ),
-    (
-        "formula",
-        "Доходность деятельности = Чистая прибыль от деятельности ÷ С/с проданного × 100%",
-    ),
+    ("formula", FORMULA_ACTIVITY_PROFIT),
+    ("formula", FORMULA_ACTIVITY_PROFITABILITY),
     (
         "body",
         "Это итоговая прибыль и доходность всего отчёта с учётом операций, которые нельзя "
@@ -269,23 +332,14 @@ OVERVIEW_HELP_CONTENT: HelpContent = (
         "Если нет продаж или себестоимости, вместо ложных 0,00% приложение показывает "
         "соответствующее пояснение.",
     ),
+    ("note", NO_UNALLOCATED_TAX_NOTE),
     ("heading", "Показатели относительно выручки"),
-    (
-        "formula",
-        "Комиссия WB, % = комиссия нетто со знаком расхода ÷ Общая выручка × 100%",
-    ),
-    (
-        "formula",
-        "Логистика, % = логистика со знаком расхода ÷ Общая выручка × 100%",
-    ),
-    (
-        "formula",
-        "Баллы, % = расходы программы лояльности и баллов ÷ Общая выручка × 100%",
-    ),
-    (
-        "formula",
-        "Чистая прибыль, % от выручки = Чистая прибыль от деятельности ÷ Общая выручка × 100%",
-    ),
+    ("formula", FORMULA_COMMISSION_SHARE),
+    ("body", "Карточка «Комиссия WB»: " + COMMISSION_REFERENCE_NOTE),
+    ("formula", FORMULA_LOGISTICS_SHARE),
+    ("formula", FORMULA_POINTS_SHARE),
+    ("body", "Карточка «Лояльность и баллы (расход)»: " + LOYALTY_EXPENSE_NOTE),
+    ("formula", FORMULA_NET_MARGIN),
     (
         "note",
         "Комиссия остаётся комиссией нетто по данным WB. Справочные поля комиссии, "
@@ -303,11 +357,11 @@ OVERVIEW_HELP_CONTENT: HelpContent = (
     (
         "body",
         "Выручка, чистая прибыль, продажи, себестоимость и финрезультат Wildberries "
-        "суммируются только по товарам фильтра. Доходность = чистая прибыль ÷ "
-        "себестоимость проданного этих товаров × 100%. Нераспределённые операции "
+        "суммируются только по товарам фильтра. Нераспределённые операции "
         "категории не имеют и сюда не входят. Тот же фильтр действует во вкладке "
         "«Сценарий цены» и в отдельном окне таблицы.",
     ),
+    ("formula", FORMULA_CATEGORY_PROFITABILITY),
     ("heading", "Основные колонки товарной таблицы"),
     (
         "bullet",
@@ -338,6 +392,55 @@ OVERVIEW_HELP_CONTENT: HelpContent = (
         "справочника не переписывает уже сохранённые результаты без явного перерасчёта истории.",
     ),
 )
+
+
+CardHelp = tuple[tuple[str, ...], str]
+
+_CATEGORY_SCOPE_NOTE = "Только товары текущего фильтра; нераспределённые суммы не входят."
+_REVENUE_BASE_NOTE = "Знаменатель — общая выручка (MAIN + BUYOUT)."
+
+# Tooltips of the Overview cards: formulas from the help plus a short note.
+OVERVIEW_CARD_HELP: dict[str, CardHelp] = {
+    "revenue": ((FORMULA_REVENUE,), "Нераспределённые операции сюда не входят."),
+    "net_profit": ((FORMULA_NET_PROFIT, FORMULA_TAX), "Общие операции без артикула не входят."),
+    "profitability": ((FORMULA_PROFITABILITY,), PROFITABILITY_LABELS_NOTE),
+    "units": (
+        (FORMULA_UNITS,),
+        "Возврат конечного покупателя после состоявшегося выкупа не отменяет BUYOUT.",
+    ),
+    "unallocated": (
+        (FORMULA_UNALLOCATED,),
+        "Положительные суммы увеличивают итог, отрицательные уменьшают.",
+    ),
+    "files": ((FORMULA_FILES,), ""),
+    "report_total": (
+        (FORMULA_ACTIVITY_PROFIT, FORMULA_ACTIVITY_PROFITABILITY),
+        f"{NO_UNALLOCATED_TAX_NOTE} {PROFITABILITY_LABELS_NOTE}",
+    ),
+}
+REVENUE_SHARE_CARD_HELP: dict[str, CardHelp] = {
+    "commission": ((FORMULA_COMMISSION_SHARE,), COMMISSION_REFERENCE_NOTE),
+    "logistics": ((FORMULA_LOGISTICS_SHARE,), _REVENUE_BASE_NOTE),
+    "points": ((FORMULA_POINTS_SHARE,), LOYALTY_EXPENSE_NOTE),
+    "net_margin": ((FORMULA_NET_MARGIN,), _REVENUE_BASE_NOTE),
+}
+CATEGORY_CARD_HELP: dict[str, CardHelp] = {
+    "revenue": ((FORMULA_REVENUE,), _CATEGORY_SCOPE_NOTE),
+    "net_profit": ((FORMULA_NET_PROFIT,), _CATEGORY_SCOPE_NOTE),
+    "profitability": (
+        (FORMULA_CATEGORY_PROFITABILITY,),
+        f"{_CATEGORY_SCOPE_NOTE} {PROFITABILITY_LABELS_NOTE}",
+    ),
+    "units": ((FORMULA_UNITS,), _CATEGORY_SCOPE_NOTE),
+    "cost_sold": ((FORMULA_COST_SOLD,), _CATEGORY_SCOPE_NOTE),
+    "financial_result": ((FORMULA_FINANCIAL_RESULT,), _CATEGORY_SCOPE_NOTE),
+}
+
+
+def card_tooltip_text(card_help: CardHelp) -> str:
+    """Tooltip text: every formula on its own line, then the note."""
+    formulas, note = card_help
+    return "\n".join((*formulas, note) if note else formulas)
 
 
 def help_plain_text(content: HelpContent) -> str:

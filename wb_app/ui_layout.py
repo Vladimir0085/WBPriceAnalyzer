@@ -243,6 +243,16 @@ class DisplayWBPriceAnalyzerApp(WBPriceAnalyzerApp):
         self._fit_to_screen();self._apply_saved_ui_scale()
     def _build_ui(self)->None:
         super()._build_ui();self._heading_tooltips=HeadingTooltipManager(self);self._install_scale_control();self.after_idle(self._protect_all_layouts)
+        # Wrapped scenario rows change the height of the upper pane; keep it protected.
+        self._scenario_protect_pending=False
+        for toolbar in (getattr(self,"scenario_price_controls",None),getattr(self,"scenario_filters",None)):
+            if toolbar is not None:toolbar.bind("<Configure>",self._schedule_scenario_protect,add="+")
+    def _schedule_scenario_protect(self,_e=None)->None:
+        if getattr(self,"_scenario_protect_pending",False):return
+        self._scenario_protect_pending=True;self.after_idle(self._protect_scenario_layout)
+    def _protect_scenario_layout(self)->None:
+        self._scenario_protect_pending=False;layout=self._table_layouts.get(getattr(self,"scenario_tab",None))
+        if layout is not None:self._protect_layout(layout)
     def _create_resizable_table_layout(self,tab:ttk.Frame,*,upper_minsize:int,table_minsize:int=150,table_fraction:float|None=None)->tuple[ttk.Frame,ttk.Frame]:
         tab.columnconfigure(0,weight=1);tab.rowconfigure(0,weight=1);shell=ttk.Frame(tab);shell.grid(row=0,column=0,sticky="nsew");shell.columnconfigure(0,weight=1)
         if table_fraction is None:

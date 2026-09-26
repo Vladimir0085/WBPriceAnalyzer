@@ -310,10 +310,15 @@ class ColumnSettingsWBPriceAnalyzerApp(ReportExportsWBPriceAnalyzerApp):
             )
             self.overview_columns_button.grid(row=0, column=5, padx=(8, 0))
 
-        scenario_anchor = _find_button(self.scenario_tab, "Сбросить")
-        if scenario_anchor is not None:
+        # Under the wrapping filter row, as in OZ 0.5.31: the reset button now
+        # lives in its own group, so the container is used explicitly.
+        scenario_parent = getattr(self, "scenario_filter_container", None)
+        if scenario_parent is None:
+            scenario_anchor = _find_button(self.scenario_tab, "Сбросить")
+            scenario_parent = scenario_anchor.master if scenario_anchor is not None else None
+        if scenario_parent is not None:
             self.scenario_columns_button = ttk.Button(
-                scenario_anchor.master,
+                scenario_parent,
                 text="Настроить столбцы…",
                 command=self.open_scenario_column_settings,
             )
