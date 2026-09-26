@@ -71,7 +71,7 @@ class PinnedControlsTests(unittest.TestCase):
         self.owner._protect_layout = lambda layout: DisplayWBPriceAnalyzerApp._protect_layout(
             self.owner, layout
         )
-        with patch("wb_app.ui_layout.ttk.Button"):
+        with patch("wb_app.ui_layout.ttk.Button", side_effect=lambda *_args, **_kwargs: Mock()):
             self.controller = TableModeController(
                 self.owner, "overview", "Обзор", self.layout.tab, Mock(), self.layout
             )
@@ -97,12 +97,16 @@ class PinnedControlsTests(unittest.TestCase):
         self.layout.shell.rowconfigure.assert_any_call(0, weight=0, minsize=0, uniform="")
         self.layout.shell.rowconfigure.assert_any_call(2, weight=1, minsize=110, uniform="")
         self.controller.fullscreen_button.configure.assert_called_with(text="Вернуть обычный вид")
+        # OZ pairs "Вернуть обычный вид" with "Открыть отдельно".
+        self.controller.detach_button.configure.assert_called_with(text="Открыть отдельно")
 
     def test_restore_preserves_the_equal_split(self) -> None:
         self.controller.expand()
         self.controller.restore()
         self.assertFalse(self.controller.fullscreen)
         self.upper.grid.assert_called_once()
+        self.controller.fullscreen_button.configure.assert_called_with(text="⛶ На весь экран")
+        self.controller.detach_button.configure.assert_called_with(text="↗ Отдельно")
         group = f"split_{id(self.layout.shell)}"
         self.layout.shell.rowconfigure.assert_any_call(0, minsize=0, weight=50, uniform=group)
         self.layout.shell.rowconfigure.assert_any_call(2, minsize=110, weight=50, uniform=group)
@@ -148,7 +152,10 @@ class OverviewTkGeometryTests(unittest.TestCase):
             # leave Tk's display scaling at 200% even after its root is closed.
             root.tk.call("tk", "scaling", 96 / 72)
 
-        with patch("tkinter.Tk.__init__", initialize_at_test_dpi):
+        # CI's small virtual monitor must not maximize the window these tests resize.
+        with patch("tkinter.Tk.__init__", initialize_at_test_dpi), patch.object(
+            DisplayWBPriceAnalyzerApp, "_maximize_on_small_screen", lambda self: None
+        ):
             self.app = ReportTotalsWBPriceAnalyzerApp(
                 AppService(Path(self.directory.name))
             )

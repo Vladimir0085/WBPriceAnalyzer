@@ -14,6 +14,8 @@ class OZParityWBPriceAnalyzerApp(CatalogWBPriceAnalyzerApp):
     def _install_table_modes(self)->None:
         style=ttk.Style(self);style.configure("TableTool.TButton",padding=(8,3));style.configure("FloatingTools.TFrame",relief="solid",borderwidth=1)
         defs=[("overview","Обзор",self.overview_tab,self.overview_tree,"overview",None,None),("scenario","Сценарий цены",self.scenario_tab,self.scenario_tree,"scenario",None,None),("catalog","Справочник себестоимости",self.catalog_tab,self.products_tree,None,"Изменить выбранный",self.edit_product)]
+        scenario_layout=self._table_layouts.get(self.scenario_tab)
+        if scenario_layout and self.scenario_kpi_frame not in scenario_layout.below_table:scenario_layout.below_table.append(self.scenario_kpi_frame)
         for key,title,tab,tree,cat,label,action in defs:
             layout=self._table_layouts.get(tab)
             if layout:self._table_modes[key]=TableModeController(self,key,title,tab,tree,layout,cat,label,action)
@@ -28,8 +30,9 @@ class OZParityWBPriceAnalyzerApp(CatalogWBPriceAnalyzerApp):
         if c:c.toggle_fullscreen();return "break"
         return None
     def _escape_table_mode(self,_e=None):
-        c=self._current_table_mode()
-        if c and c.fullscreen:c.restore();return "break"
+        # As in OZ, Esc restores a full-screen table even after switching to another tab.
+        for c in self._table_modes.values():
+            if c.fullscreen:c.restore();return "break"
         return None
     def _restore_other_table_modes(self,key:str)->None:
         for other,c in self._table_modes.items():

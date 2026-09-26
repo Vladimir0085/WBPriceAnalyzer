@@ -1,7 +1,7 @@
 from __future__ import annotations
 from contextlib import contextmanager
 import unittest
-from wb_app.ui_categories import category_allowed, category_filter_label
+from wb_app.ui_categories import category_allowed, category_filter_label, category_filter_scope_text
 from wb_app.ui_catalog import delete_catalog_product
 from wb_app.ui_layout import fitted_window_size, resolve_ui_scale
 from wb_app.ui import (
@@ -34,11 +34,20 @@ class UIParityTests(unittest.TestCase):
         self.assertFalse(category_allowed("Шкафы",selected,False))
         self.assertFalse(category_allowed("Столы",selected,True))
         self.assertTrue(category_allowed("Шкафы",selected,True))
-        self.assertTrue(category_allowed("Столы",None,False))
-        self.assertFalse(category_allowed("Столы",None,True))
-        self.assertEqual(category_filter_label(None),"Все категории")
-        self.assertEqual(category_filter_label(set()),"Ничего не выбрано")
+        # As in OZ, an empty selection means all categories in both modes.
+        self.assertTrue(category_allowed("Столы",set(),False))
+        self.assertTrue(category_allowed("Столы",set(),True))
+        self.assertEqual(category_filter_label(set()),"Все категории")
         self.assertEqual(category_filter_label({"Столы"}),"Столы")
+        self.assertEqual(category_filter_label({"Столы","Кровати"}),"Кровати · Столы")
+        self.assertEqual(category_filter_label({"Столы","Кровати","Шкафы"}),"Выбрано категорий: 3")
+        self.assertEqual(category_filter_scope_text(set()),"Все товары")
+        self.assertEqual(category_filter_scope_text({"Столы","Кровати"}),"категории: Кровати, Столы")
+        self.assertEqual(category_filter_scope_text({"Столы"},exclude=True),"кроме категорий: Столы")
+        self.assertEqual(
+            category_filter_scope_text({"А","Б","В","Г","Д"}),
+            "категории: А, Б, В и ещё 2",
+        )
     def test_delete_catalog_only_products(self):
         db=_FakeDatabase()
         self.assertEqual(delete_catalog_product(db,"ABC-1"),1)

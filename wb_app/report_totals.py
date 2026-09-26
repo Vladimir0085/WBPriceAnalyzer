@@ -8,12 +8,12 @@ from .ui import _money, _percent, _profitability_text
 
 
 def report_total_value(calculation) -> float:
-    """Return the WB result including unallocated income and expenses."""
+    """Чистая прибыль от деятельности: чистая прибыль товаров + нераспределённые."""
     return float(calculation.totals()["net_profit"])
 
 
 def report_total_profitability(calculation) -> float:
-    """Return report profit including unallocated amounts per cost sold."""
+    """Чистая прибыль от деятельности, делённая на себестоимость проданного."""
     cost_sold = float(calculation.totals()["cost_sold"])
     return report_total_value(calculation) / cost_sold if cost_sold else 0.0
 
@@ -56,7 +56,7 @@ class ReportTotalsWBPriceAnalyzerApp(ColumnSettingsWBPriceAnalyzerApp):
         card.grid(row=1, column=6, sticky="nsew", padx=(5, 0))
         ttk.Label(
             card,
-            text="Итог с нераспределёнными",
+            text="Чистая прибыль от деятельности",
             style="CompactCardMuted.TLabel",
         ).grid(row=0, column=0, columnspan=2, sticky="w")
         ttk.Label(

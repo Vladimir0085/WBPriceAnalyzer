@@ -333,6 +333,7 @@ class ColumnSettingsWBPriceAnalyzerApp(ReportExportsWBPriceAnalyzerApp):
             column_specs=OVERVIEW_COLUMN_SPECS,
             setting_key=OVERVIEW_COLUMNS_SETTING,
             section_title="Обзор",
+            saved_status="Настройка столбцов обзора сохранена",
         )
 
     def open_scenario_column_settings(self) -> None:
@@ -343,6 +344,7 @@ class ColumnSettingsWBPriceAnalyzerApp(ReportExportsWBPriceAnalyzerApp):
             column_specs=SCENARIO_COLUMN_SPECS,
             setting_key=SCENARIO_COLUMNS_SETTING,
             section_title="Сценарий цены",
+            saved_status="Настройка столбцов сценария цены сохранена",
         )
 
     def _open_column_settings(
@@ -354,6 +356,7 @@ class ColumnSettingsWBPriceAnalyzerApp(ReportExportsWBPriceAnalyzerApp):
         column_specs: ColumnSpecs,
         setting_key: str,
         section_title: str,
+        saved_status: str,
     ) -> None:
         headings = {
             column_id: str(tree.heading(column_id).get("text", "") or column_id)
@@ -381,7 +384,7 @@ class ColumnSettingsWBPriceAnalyzerApp(ReportExportsWBPriceAnalyzerApp):
         else:
             self.scenario_column_preferences = normalized
         self._apply_column_preferences(tree, normalized, table_key)
-        self.status_var.set(f"Настройка столбцов «{section_title}» сохранена")
+        self.status_var.set(saved_status)
 
     def _apply_overview_column_preferences(self) -> None:
         self._apply_column_preferences(

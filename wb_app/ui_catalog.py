@@ -34,8 +34,9 @@ class CatalogWBPriceAnalyzerApp(CategoryWBPriceAnalyzerApp):
         ttk.Button(actions,text="Изменить выбранный",command=self.edit_product).grid(row=0,column=2,padx=4)
         ttk.Button(actions,text="В архив / восстановить",command=self.toggle_product).grid(row=0,column=3,padx=4)
         ttk.Button(actions,text="Журнал изменений",command=self.show_cost_history).grid(row=0,column=4,padx=4)
-        ttk.Button(actions,text="Удалить",command=self.delete_selected_product).grid(row=0,column=5,padx=(8,4))
-        warning=ttk.Frame(upper);warning.grid(row=2,column=0,sticky="ew",pady=(0,6));warning.columnconfigure(0,weight=1)
+        ttk.Button(actions,text="Удалить",style="Danger.TButton",command=self.delete_selected_product).grid(row=0,column=5,padx=(8,4))
+        # Shown only while the last cost import skipped rows (see _refresh_cost_catalog_warning).
+        warning=ttk.Frame(upper);warning.grid(row=2,column=0,sticky="ew",pady=(0,6));warning.columnconfigure(0,weight=1);self.catalog_warning_frame=warning
         ttk.Label(warning,textvariable=self.cost_catalog_warning_var,style="Warning.TLabel").grid(row=0,column=0,sticky="w")
         ttk.Button(warning,text="Показать пропущенные строки",command=self.show_cost_catalog_warnings).grid(row=0,column=1,padx=(12,0))
         filters=ttk.Frame(upper);filters.grid(row=3,column=0,sticky="ew");filters.columnconfigure(5,weight=1)
@@ -43,12 +44,24 @@ class CatalogWBPriceAnalyzerApp(CategoryWBPriceAnalyzerApp):
         ttk.Label(filters,text="Показывать:").grid(row=0,column=2,padx=(0,6));status=ttk.Combobox(filters,textvariable=self.product_status_var,state="readonly",values=("Все","Активные","Архив"),width=12);status.grid(row=0,column=3,padx=(0,12));status.bind("<<ComboboxSelected>>",lambda _e:self.refresh_products())
         ttk.Label(filters,textvariable=self.product_count_var,style="Muted.TLabel").grid(row=0,column=4,sticky="w")
         ttk.Button(filters,text="Выгрузить XLSX",command=self.export_product_catalog).grid(row=0,column=6,padx=4);ttk.Button(filters,text="Загрузить XLSX",command=self.import_product_catalog).grid(row=0,column=7,padx=4);ttk.Button(filters,text="Очистить справочник",command=self.clear_product_catalog).grid(row=0,column=8,padx=(12,4))
+        ttk.Label(upper,text="Справочник влияет только на будущие расчеты. Сохраненные отчеты хранят исторический снимок себестоимости.",style="Muted.TLabel").grid(row=4,column=0,sticky="w",pady=(6,0))
         self.products_tree=self._create_tree(table,["article","name","category","total","material","labor","status"],["Артикул","Наименование","Категория","Полная себестоимость","Материал","Трудозатраты","Статус"],row=0,widths=[150,320,220,180,150,150,110])
         self.products_tree.bind("<Double-1>",lambda _e:self.edit_product());self.products_tree.bind("<Delete>",lambda _e:self.delete_selected_product());self.refresh_products();self._refresh_cost_catalog_warning()
+    def _refresh_cost_catalog_warning(self)->None:
+        super()._refresh_cost_catalog_warning()
+        frame=getattr(self,"catalog_warning_frame",None)
+        if frame is not None:frame.grid() if self.cost_catalog_warning_var.get() else frame.grid_remove()
     def delete_selected_product(self)->None:
         sel=self.products_tree.selection()
-        if not sel:messagebox.showinfo("Справочник себестоимости","Выберите товар для удаления.",parent=self);return
-        article=str(sel[0]);values=self.products_tree.item(article,"values");name=str(values[1]) if len(values)>1 else article
-        if not messagebox.askyesno("Удалить товар",f"Удалить «{name}» ({article}) из текущего справочника?\n\nСохраненные расчеты и исторические снимки себестоимости не изменятся.",icon="warning",parent=self):return
-        if delete_catalog_product(self.db,article):self._refresh_after_catalog_change();self.status_var.set(f"Товар {article} удален из текущего справочника")
-        else:messagebox.showinfo("Справочник себестоимости","Товар уже отсутствует в справочнике.",parent=self)
+        if not sel:messagebox.showinfo("Удалить товар","Выберите позицию в справочнике себестоимости.",parent=self);return
+        article=str(sel[0]);product=self.db.product_map(active_only=False).get(article)
+        if product is None:self.refresh_products();return
+        if not messagebox.askyesno(
+            "Удалить позицию из справочника?",
+            f"Удалить «{product.name}» (артикул {product.article}) из текущего справочника себестоимости?\n\n"
+            "Сохраненные отчеты, их показатели и историческая себестоимость останутся без изменений. "
+            "Если этот артикул встретится в новом отчете, его потребуется добавить заново.",
+            icon="warning",parent=self,
+        ):return
+        if delete_catalog_product(self.db,article):self._refresh_after_catalog_change();self.status_var.set(f"Из справочника удалена позиция: {article}")
+        else:messagebox.showinfo("Удалить товар","Позиция уже отсутствует в текущем справочнике.",parent=self);self.refresh_products()

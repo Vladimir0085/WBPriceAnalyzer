@@ -20,6 +20,9 @@ class HelpContentTests(unittest.TestCase):
         self.assertIn("загружаются парой", text)
         self.assertIn("Старый и новый форматы WB", text)
         self.assertIn("один день или несколько дней", text)
+        # The cost catalog has its own tab, as in OZ.
+        self.assertIn("Во вкладке «Справочник себестоимости» заполните артикулы", text)
+        self.assertNotIn("отдельно во вкладке «Настройки»", text)
 
     def test_overview_help_documents_key_formulas(self) -> None:
         text = help_plain_text(OVERVIEW_HELP_CONTENT)
@@ -30,13 +33,21 @@ class HelpContentTests(unittest.TestCase):
             text,
         )
         self.assertIn(
-            "Итог с нераспределёнными = Чистая прибыль товаров + Нераспределённые",
+            "Чистая прибыль от деятельности = Чистая прибыль товаров + Нераспределённые",
             text,
         )
         self.assertIn(
-            "Доходность итога = Итог отчёта с нераспределёнными ÷ С/с проданного × 100%",
+            "Доходность деятельности = Чистая прибыль от деятельности ÷ С/с проданного × 100%",
             text,
         )
+        self.assertIn(
+            "Чистая прибыль, % от выручки = Чистая прибыль от деятельности ÷ Общая выручка",
+            text,
+        )
+        self.assertIn("Карточка «Чистая прибыль товаров»", text)
+        self.assertIn("Пустой выбор означает «Все категории»", text)
+        self.assertIn("Финрезультат WB до с/с и налога", text)
+        self.assertNotIn("Итог с нераспределёнными", text)
         self.assertIn("Комиссия остаётся комиссией нетто", text)
         self.assertIn("Действует тот способ, который был использован последним", text)
         self.assertIn("«Исходные файлы»", text)

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import ttk
@@ -20,6 +20,25 @@ def resolve_ui_scale(preference:str, screen_height:int)->float:
 
 def fitted_window_size(w:int,h:int)->tuple[int,int,int,int]:
     return (min(1540,max(1000,w-48)),min(920,max(620,h-80)),min(1180,max(900,w-140)),min(720,max(560,h-160)))
+
+def density_style_options(factor:float)->dict[str,dict[str,object]]:
+    """OZ density: theme sizes at 100%, proportionally tighter at 90% and 80%."""
+    f=min(1.0,max(0.8,float(factor)))
+    def scale(value:int,floor:int)->int:return max(floor,int(round(value*f)))
+    return {
+        "Treeview":{"rowheight":scale(30,22)},
+        "Treeview.Heading":{"padding":(scale(8,5),scale(8,4))},
+        "TButton":{"padding":(scale(14,8),scale(8,4))},
+        "Accent.TButton":{"padding":(scale(16,9),scale(9,5))},
+        "TEntry":{"padding":scale(7,4)},
+        "TCombobox":{"padding":scale(6,4)},
+        "TSpinbox":{"padding":scale(6,4)},
+        "TNotebook.Tab":{"padding":(scale(16,10),scale(10,5))},
+        "TableTool.TButton":{"padding":(scale(8,5),scale(3,2))},
+    }
+
+def ui_scale_status(preference:str,factor:float)->str:
+    return f"Масштаб интерфейса: {int(round(factor*100))}%"+(" (авто)" if preference=="auto" else "")
 
 def _find_parent_for_button(root:tk.Misc,text:str)->tk.Misc|None:
     for child in root.winfo_children():
@@ -93,6 +112,8 @@ class HeadingTooltipManager:
 @dataclass
 class StaticTableLayout:
     tab:ttk.Frame;shell:ttk.Frame;upper:ttk.Frame;toolbar:ttk.Frame;table:ttk.Frame;min_upper:int;table_fraction:float|None=None
+    # Rows under the table (e.g. scenario totals) that full-screen mode hides, as in OZ.
+    below_table:list[tk.Misc]=field(default_factory=list)
 
 class DetachedTableWindow:
     def __init__(self,controller:"TableModeController",action_label:str|None=None,action:Callable[[],None]|None=None)->None:
@@ -189,18 +210,23 @@ class TableModeController:
         self.fullscreen=False;self._detached=None;self.layout.toolbar.columnconfigure(0,weight=1)
         self.fullscreen_button=ttk.Button(self.layout.toolbar,text="⛶ На весь экран",style="TableTool.TButton",command=self.toggle_fullscreen)
         self.fullscreen_button.grid(row=1,column=1,padx=3,pady=2)
-        ttk.Button(self.layout.toolbar,text="↗ Отдельно",style="TableTool.TButton",command=self.open_detached).grid(row=1,column=2,padx=3,pady=2)
+        # OZ labels: "↗ Отдельно" next to "⛶ На весь экран", "Открыть отдельно" next to "Вернуть обычный вид".
+        self.detach_button=ttk.Button(self.layout.toolbar,text="↗ Отдельно",style="TableTool.TButton",command=self.open_detached)
+        self.detach_button.grid(row=1,column=2,padx=3,pady=2)
     def toggle_fullscreen(self)->None:self.restore() if self.fullscreen else self.expand()
     def expand(self)->None:
         if self.fullscreen:return
         self.owner._restore_other_table_modes(self.key);self.layout.upper.grid_remove()
+        for widget in self.layout.below_table:widget.grid_remove()
         # Keep filters and mode buttons in their own row, never over the table.
         self.layout.shell.rowconfigure(0,weight=0,minsize=0,uniform="");self.layout.shell.rowconfigure(2,weight=1,minsize=110,uniform="")
-        self.fullscreen_button.configure(text="Вернуть обычный вид");self.fullscreen=True
+        self.fullscreen_button.configure(text="Вернуть обычный вид");self.detach_button.configure(text="Открыть отдельно");self.fullscreen=True
         self.owner.status_var.set(f"{self.title}: таблица развернута. F11 или Esc — вернуть обычный вид.")
     def restore(self)->None:
         if not self.fullscreen:return
-        self.layout.upper.grid();self.fullscreen_button.configure(text="⛶ На весь экран");self.owner._protect_layout(self.layout)
+        self.layout.upper.grid()
+        for widget in self.layout.below_table:widget.grid()
+        self.fullscreen_button.configure(text="⛶ На весь экран");self.detach_button.configure(text="↗ Отдельно");self.owner._protect_layout(self.layout)
         self.fullscreen=False;self.owner.status_var.set(self.owner._current_run_status())
     def open_detached(self)->None:
         if self._detached is not None and not self._detached._closed:self._detached.focus();return
@@ -210,7 +236,7 @@ class TableModeController:
 
 class DisplayWBPriceAnalyzerApp(WBPriceAnalyzerApp):
     def __init__(self,*args,**kwargs)->None:
-        self._table_layouts={};self._heading_tooltips=None;self._base_tk_scaling=1.0
+        self._table_layouts={};self._heading_tooltips=None;self._base_tk_scaling=1.0;self._ui_factor=1.0
         super().__init__(*args,**kwargs)
         try:self._base_tk_scaling=float(self.tk.call("tk","scaling"))
         except (tk.TclError,TypeError,ValueError):pass
@@ -257,16 +283,43 @@ class DisplayWBPriceAnalyzerApp(WBPriceAnalyzerApp):
         ttk.Label(target,text="Масштаб интерфейса:").grid(row=3,column=2,sticky="e",padx=(24,8),pady=(10,0))
         combo=ttk.Combobox(target,textvariable=self.ui_scale_var,state="readonly",values=tuple(UI_SCALE_LABELS),width=22);combo.grid(row=3,column=3,sticky="w",pady=(10,0));combo.bind("<<ComboboxSelected>>",self._scale_changed)
     def _scale_changed(self,_e=None)->None:
-        value=UI_SCALE_LABELS.get(self.ui_scale_var.get(),"auto");self.db.set_setting("ui_scale",value);self._apply_ui_scale(resolve_ui_scale(value,self.winfo_screenheight()))
+        value=UI_SCALE_LABELS.get(self.ui_scale_var.get(),"auto");self.db.set_setting("ui_scale",value);factor=resolve_ui_scale(value,self.winfo_screenheight())
+        self._apply_ui_scale(factor);self.status_var.set(ui_scale_status(value,factor))
     def _apply_saved_ui_scale(self)->None:self._apply_ui_scale(resolve_ui_scale(self.db.get_setting("ui_scale","auto"),self.winfo_screenheight()))
     def _apply_ui_scale(self,factor:float)->None:
         try:self.tk.call("tk","scaling",self._base_tk_scaling*factor)
         except tk.TclError:return
-        ttk.Style(self).configure("Treeview",rowheight=max(20,int(24*factor)));self.after_idle(self._protect_all_layouts);self.after_idle(self._refresh_headings)
+        self._ui_factor=factor;self._apply_density_styles(factor);self._apply_compact_header(factor<0.99)
+        self.after_idle(self._protect_all_layouts);self.after_idle(self._refresh_headings)
+    def _apply_density_styles(self,factor:float)->None:
+        style=ttk.Style(self)
+        for name,options in density_style_options(factor).items():style.configure(name,**options)
+    def _apply_compact_header(self,compact:bool)->None:
+        # As in OZ: below 100% the subtitle is hidden and the header margins shrink.
+        subtitle=getattr(self,"header_subtitle",None);header=getattr(self,"header_frame",None)
+        try:
+            if subtitle is not None:subtitle.grid_remove() if compact else subtitle.grid()
+            if header is not None:header.configure(padding=(18,8,18,8) if compact else (22,18,22,16))
+            if hasattr(self,"notebook"):self.notebook.grid_configure(padx=12 if compact else 18,pady=(0,6 if compact else 12))
+        except tk.TclError:pass
+    def _preview_theme(self,_e=None)->None:
+        # A theme resets paddings and row height; keep the density of the chosen scale.
+        super()._preview_theme(_e);self._apply_density_styles(self._ui_factor)
+    def save_settings(self)->None:
+        super().save_settings();self._apply_saved_ui_scale()
+    def _reload_settings_after_restore(self)->None:
+        super()._reload_settings_after_restore()
+        if hasattr(self,"ui_scale_var"):self.ui_scale_var.set(UI_SCALE_VALUES.get(self.db.get_setting("ui_scale","auto"),"Авто (рекомендуется)"))
+        self._apply_saved_ui_scale()
     def _refresh_headings(self)->None:
         for child in self.winfo_children():self._walk(child)
     def _walk(self,w:tk.Misc)->None:
         if isinstance(w,ttk.Treeview):self._ensure_tree(w)
         for child in w.winfo_children():self._walk(child)
     def _fit_to_screen(self)->None:
-        w,h,mw,mh=fitted_window_size(self.winfo_screenwidth(),self.winfo_screenheight());self.geometry(f"{w}x{h}");self.minsize(mw,mh)
+        sw,sh=int(self.winfo_screenwidth()),int(self.winfo_screenheight());w,h,mw,mh=fitted_window_size(sw,sh)
+        self.minsize(mw,mh);self.geometry(f"{w}x{h}+{max((sw-w)//2,0)}+{max((sh-h)//2,0)}")
+        if sh<=900 or sw<=1440:self.after_idle(self._maximize_on_small_screen)
+    def _maximize_on_small_screen(self)->None:
+        try:self.state("zoomed")
+        except tk.TclError:pass

@@ -124,7 +124,7 @@ def _fill_report_sheet(
     ws["E2"] = calculation.tax_rate
     ws["G2"] = "Нераспределенные доходы / расходы"
     ws["H2"] = calculation.unallocated_total
-    ws["J2"] = "Чистая прибыль с нераспределенными"
+    ws["J2"] = "Чистая прибыль от деятельности"
     ws["K2"] = totals["net_profit"]
     channel_model = any(
         item.main_revenue is not None or item.buyout_revenue is not None
@@ -182,7 +182,7 @@ def _fill_report_sheet(
     else:
         total_profitability = product_net / product_cost
     ws.cell(total_row, 25, total_profitability)
-    ws.cell(total_row + 1, 1, "Итого с нераспределенными")
+    ws.cell(total_row + 1, 1, "Итого от деятельности (с нераспределенными)")
     ws.cell(total_row + 1, 21, float(ws.cell(total_row, 21).value or 0) + calculation.unallocated_total)
     ws.cell(total_row + 1, 23, product_cost)
     report_net = product_net + calculation.unallocated_total
