@@ -19,9 +19,18 @@ from wb_app.help_content import (
     card_tooltip_text,
     help_plain_text,
 )
-from wb_app.models import RunSummary
-from wb_app.report_totals import POINTS_CARD_TITLE, ReportTotalsWBPriceAnalyzerApp
+from wb_app.models import ProductResult, RunCalculation, RunSummary
+from wb_app.report_totals import (
+    POINTS_CARD_TITLE,
+    ReportTotalsWBPriceAnalyzerApp,
+    overview_revenue_kpi_values,
+)
 from wb_app.ui import (
+    _money,
+    _number,
+    _percent,
+    _signed_money,
+    _signed_percentage_points,
     report_name_is_custom,
     run_full_display,
     run_header_display,
@@ -81,6 +90,54 @@ class ReportListLabelTests(unittest.TestCase):
             run_full_display(4, run),
             "№4 · Отчет Wildberries за 14.09.2026–20.09.2026 · 14.09.2026–20.09.2026",
         )
+
+
+class ZeroFormattingTests(unittest.TestCase):
+    def test_zero_is_shown_without_a_minus_sign(self) -> None:
+        self.assertEqual(_money(-0.0), "0.00 ₽")
+        self.assertEqual(_money(-0.004), "0.00 ₽")
+        self.assertEqual(_percent(-0.0), "0.00%")
+        self.assertEqual(_percent(-0.00001), "0.00%")
+        self.assertEqual(_number(-0.0), "0")
+        self.assertEqual(_signed_money(-0.0), "0.00 ₽")
+        self.assertEqual(_signed_percentage_points(-0.0), "0.00 п.п.")
+
+    def test_non_zero_values_keep_their_sign_and_digits(self) -> None:
+        self.assertEqual(_money(-0.006), "-0.01 ₽")
+        self.assertEqual(_money(-1_234.5), "-1 234.50 ₽")
+        self.assertEqual(_money(1_234.5), "1 234.50 ₽")
+        self.assertEqual(_percent(-0.25), "-25.00%")
+        self.assertEqual(_number(-2), "-2")
+
+    def test_loyalty_card_without_expense_shows_plain_zero(self) -> None:
+        product = ProductResult(
+            article="A",
+            name="Горшок",
+            material_cost=100,
+            labor_cost=0,
+            units=1,
+            main_units=1,
+            buyout_units=0,
+            main_revenue=1_000,
+            buyout_revenue=0,
+        )
+        product.wb_commission = -150
+        product.logistics_cost = -50
+        calculation = RunCalculation(
+            run_id=1,
+            period_start=None,
+            period_end=None,
+            tax_rate=0.06,
+            products=[product],
+            unallocated_total=0,
+            unallocated={},
+            accrual_stats={},
+        )
+        # The stored loyalty expense is a negative zero; only its label changes.
+        self.assertEqual(str(calculation.revenue_amounts()["points"]), "-0.0")
+        values = overview_revenue_kpi_values(calculation)
+        self.assertEqual(values["points"], "0.00 ₽ · 0.00%")
+        self.assertEqual(values["commission"], "150.00 ₽ · 15.00%")
 
 
 class HelpAndCardTextTests(unittest.TestCase):
@@ -288,6 +345,8 @@ class InterfaceTkTests(unittest.TestCase):
         ]
         # The first label is the title; the second one shows the value.
         self.assertEqual(titles[0], POINTS_CARD_TITLE)
+        # Week 2 of the synthetic set has no loyalty expense: no «-0.00».
+        self.assertEqual(self.app.revenue_share_kpi_vars["points"].get(), "0.00 ₽ · 0.00%")
         self.assertNotIn("Баллы", titles)
 
 

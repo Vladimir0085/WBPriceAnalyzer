@@ -4355,10 +4355,18 @@ def _set_category_choices(combo: ttk.Combobox, variable: tk.StringVar, categorie
         variable.set(CATEGORY_ALL)
 
 
+def _display_zero(value: float, digits: int = 2) -> float:
+    """Drop the minus sign of a value that is shown as zero («-0.00» → «0.00»).
+
+    Display only: the calculated number itself is never changed.
+    """
+    return 0.0 if round(value, digits) == 0 else value
+
+
 def _money(value: float | None) -> str:
     if value is None:
         return "—"
-    return f"{value:,.2f} ₽".replace(",", " ")
+    return f"{_display_zero(value):,.2f} ₽".replace(",", " ")
 
 
 def _signed_money(value: float) -> str:
@@ -4370,11 +4378,11 @@ def _signed_number(value: float) -> str:
 
 
 def _number(value: float) -> str:
-    return f"{value:,.2f}".replace(",", " ").rstrip("0").rstrip(".")
+    return f"{_display_zero(value):,.2f}".replace(",", " ").rstrip("0").rstrip(".")
 
 
 def _percent(value: float) -> str:
-    return f"{value * 100:,.2f}%".replace(",", " ")
+    return f"{_display_zero(value * 100):,.2f}%".replace(",", " ")
 
 
 def _profitability_text(value: float | None, *, units: float, cost_sold: float) -> str:
@@ -4387,7 +4395,7 @@ def _profitability_text(value: float | None, *, units: float, cost_sold: float) 
 
 def _signed_percentage_points(value: float) -> str:
     prefix = "+" if value > 0 else ""
-    return f"{prefix}{value * 100:,.2f} п.п.".replace(",", " ")
+    return f"{prefix}{_display_zero(value * 100):,.2f} п.п.".replace(",", " ")
 
 
 def _comparison_percent(metric: ComparisonMetric) -> str:
