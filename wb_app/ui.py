@@ -94,9 +94,9 @@ OVERVIEW_COLUMN_SPECS = (
     ("cost_sold", "С/с проданного", 125),
     ("profitability", "Доходность", 125),
     ("net_unit", "Чистая прибыль на ед.", 125),
-    ("profit_unit", "Прибыль от продаж на ед.", 125),
+    ("profit_unit", "Финрезультат WB на ед.", 125),
     ("net_total", "Чистая прибыль всего", 125),
-    ("profit_total", "Прибыль от продаж всего", 125),
+    ("profit_total", "Финрезультат WB до с/с и налога", 125),
     ("avg_price", "Средняя цена", 125),
     ("tax", "Налог", 125),
     ("taxable", "Налогооблагаемый доход", 125),
@@ -146,7 +146,7 @@ SCENARIO_COLUMN_SPECS = (
     ("points", "Прочие изменения", 135),
     ("taxable", "Налоговая база", 135),
     ("tax", "Налог", 135),
-    ("profit", "Прибыль до с/с", 135),
+    ("profit", "Прибыль до себестоимости", 135),
     ("profit_unit", "Прибыль/ед. до с/с", 135),
     ("net_unit", "Чистая прибыль/ед.", 135),
     ("net_total", "Чистая прибыль всего", 135),
@@ -241,30 +241,37 @@ class WBPriceAnalyzerApp(tk.Tk):
     def _build_header(self) -> None:
         header = ttk.Frame(self, padding=(22, 18, 22, 16))
         header.grid(row=0, column=0, sticky="ew")
-        header.columnconfigure(0, weight=1)
+        header.columnconfigure(1, weight=1)
+        self.header_frame = header
         title_box = ttk.Frame(header)
-        title_box.grid(row=0, column=0, sticky="w")
+        title_box.grid(row=0, column=0, sticky="nw", padx=(0, 16))
         ttk.Label(title_box, text="WB Price Analyzer", style="Title.TLabel").grid(row=0, column=0, sticky="w")
-        ttk.Label(
+        self.header_subtitle = ttk.Label(
             title_box,
-            text="Еженедельные отчеты Wildberries, история, контроль операций и плановая доходность",
+            text="Отчеты Wildberries, история, контроль операций и плановая доходность",
             style="Muted.TLabel",
-        ).grid(row=1, column=0, sticky="w", pady=(2, 0))
+        )
+        self.header_subtitle.grid(row=1, column=0, sticky="w", pady=(2, 0))
 
-        actions = ttk.Frame(header)
-        actions.grid(row=0, column=1, rowspan=2, sticky="e")
-        ttk.Label(actions, text="Отчет:", style="Muted.TLabel").grid(row=0, column=0, padx=(0, 6))
+        # One row of actions; in a narrow window whole groups move to the next
+        # row (right-aligned) instead of being clipped by the window edge.
+        actions = WrappingToolbar(header, align_right=True)
+        actions.grid(row=0, column=1, sticky="new")
+        self.header_actions = actions
+        report_group = actions.add_group()
+        ttk.Label(report_group, text="Отчет:", style="Muted.TLabel").grid(row=0, column=0, padx=(0, 6))
         self.run_var = tk.StringVar()
-        self.run_combo = ttk.Combobox(actions, textvariable=self.run_var, state="readonly", width=32)
-        self.run_combo.grid(row=0, column=1, padx=(0, 12))
+        self.run_combo = ttk.Combobox(report_group, textvariable=self.run_var, state="readonly", width=30)
+        self.run_combo.grid(row=0, column=1)
         self.run_combo.bind("<<ComboboxSelected>>", self._on_run_selected)
-        ttk.Button(actions, text="Импортировать отчеты", style="Accent.TButton", command=self.import_reports).grid(
-            row=0, column=2, padx=5
-        )
-        ttk.Button(actions, text="Экспорт в Excel", command=self.export_current_run).grid(row=0, column=3, padx=5)
-        ttk.Button(actions, text="О программе", command=self.show_about).grid(
-            row=1, column=3, sticky="e", padx=5, pady=(6, 0)
-        )
+        for text, style, command in (
+            ("Импортировать отчеты", "Accent.TButton", self.import_reports),
+            ("Экспорт в Excel", "TButton", self.export_current_run),
+            ("О программе", "TButton", self.show_about),
+        ):
+            ttk.Button(actions.add_group(), text=text, style=style, command=command).grid(
+                row=0, column=0, padx=(2, 0)
+            )
 
     def _build_overview_tab(self) -> None:
         overview_upper, overview_table = self._create_resizable_table_layout(
@@ -308,7 +315,7 @@ class WBPriceAnalyzerApp(tk.Tk):
         self.kpi_vars: dict[str, tk.StringVar] = {}
         cards = [
             ("revenue", "Выручка"),
-            ("net_profit", "Чистая прибыль"),
+            ("net_profit", "Чистая прибыль товаров"),
             ("profitability", "Доходность"),
             ("units", "Продажи, шт."),
             ("unallocated", "Нераспределенные"),
@@ -538,7 +545,7 @@ class WBPriceAnalyzerApp(tk.Tk):
     def _build_scenario_tab(self) -> None:
         scenario_upper, scenario_table = self._create_resizable_table_layout(
             self.scenario_tab,
-            upper_minsize=220,
+            upper_minsize=150,
         )
         ttk.Label(scenario_upper, text="Доходность при плановой цене", style="Section.TLabel").grid(
             row=0, column=0, sticky="w", pady=(10, 2)
@@ -616,8 +623,9 @@ class WBPriceAnalyzerApp(tk.Tk):
         )
         self.scenario_tree.bind("<<TreeviewSelect>>", self._on_scenario_selected)
 
-        self.scenario_kpi_frame = ttk.Frame(scenario_upper)
-        self.scenario_kpi_frame.grid(row=4, column=0, sticky="ew", pady=(0, 10))
+        # As in OZ, the scenario totals sit under the table they summarize.
+        self.scenario_kpi_frame = ttk.Frame(scenario_table)
+        self.scenario_kpi_frame.grid(row=1, column=0, sticky="ew", pady=(10, 0))
         for column in range(4):
             self.scenario_kpi_frame.columnconfigure(column, weight=1)
         self.scenario_kpi_vars: dict[str, tk.StringVar] = {}
@@ -1658,14 +1666,16 @@ class WBPriceAnalyzerApp(tk.Tk):
                 cost_sold=planned_cost_total,
             )
         )
-        scope_note = ""
-        active_count = len(self._active_report_run_ids())
-        if active_count > 1:
-            scope_note = f" · {_russian_report_count(active_count)} · цены только для 1 отчета"
         self.scenario_count_var.set(
-            f"Показано: {len(visible)} из {len(scenarios)}{scope_note}"
+            f"Показано: {len(visible)} из {len(scenarios)}{self._scenario_scope_note()}"
         )
         self._configure_value_tags(self.scenario_tree)
+
+    def _scenario_scope_note(self) -> str:
+        active_count = len(self._active_report_run_ids())
+        if active_count > 1:
+            return f" · {_russian_report_count(active_count)} · цены только для 1 отчета"
+        return ""
 
     def _reset_scenario_filters(self) -> None:
         self.scenario_category_var.set(CATEGORY_ALL)
